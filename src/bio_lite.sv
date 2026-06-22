@@ -23,7 +23,7 @@
 //   - IRQ reduced to 2 channels (matches core count)
 
 module bio_lite #(
-    parameter NUM_MACH = 1,
+    parameter NUM_MACH = 2,
     parameter MEM_SIZE_BYTES = 32'h0800
 )(
     input  logic        clk,
@@ -331,14 +331,14 @@ module bio_lite #(
     );
 
     // Core 1 IMEM
-    //sram_512x32 u_imem_core1 (
-    //    .clk     (clk),
-    //    .addr    (ram_addr[1][8:0]),
-    //    .wr_en   (ram_wr_en[1]),
-    //    .wr_mask (ram_wr_mask[1]),
-    //    .wr_data (ram_wr_data[1]),
-    //    .rd_data (ram_rd_data[1])
-    //);
+    sram_512x32 u_imem_core1 (
+        .clk     (clk),
+        .addr    (ram_addr[1][8:0]),
+        .wr_en   (ram_wr_en[1]),
+        .wr_mask (ram_wr_mask[1]),
+        .wr_data (ram_wr_data[1]),
+        .rd_data (ram_rd_data[1])
+    );
 
 
     // IMEM host readback — mux based on selected core
@@ -521,13 +521,13 @@ module bio_lite #(
                 .data_out(gpio_clr_agg[g])
             );
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpdir_set_aggregator (
-                .stb(gpdir_set[0][g] & gpdir_set_valid[0]),
-                .data_in(gpdir_set[0][g]),
+                .stb({gpdir_set[1][g] & gpdir_set_valid[1], gpdir_set[0][g] & gpdir_set_valid[0]}),
+                .data_in({gpdir_set[0][g], gpdir_set[1][g]}),
                 .data_out(gpdir_set_agg[g])
             );
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpdir_clr_aggregator (
-                .stb(gpdir_clr[0][g] & gpdir_clr_valid[0]),
-                .data_in(gpdir_clr[0][g]),
+                .stb({gpdir_clr[1][g] & gpdir_clr_valid[1], gpdir_clr[0][g] & gpdir_clr_valid[0]}),
+                .data_in({gpdir_clr[0][g], gpdir_clr[1][g]}),
                 .data_out(gpdir_clr_agg[g])
             );
         end
@@ -549,7 +549,7 @@ module bio_lite #(
         if (snap_output_to_quantum) begin
             case (snap_output_to_which)
                 1'b0: if (penable[0]) begin gpio_out <= gpio_out_int; gpio_dir <= gpio_dir_int; end
-                //1'b1: if (penable[1]) begin gpio_out <= gpio_out_int; gpio_dir <= gpio_dir_int; end
+                1'b1: if (penable[1]) begin gpio_out <= gpio_out_int; gpio_dir <= gpio_dir_int; end
             endcase
         end else begin
             gpio_out <= gpio_out_int;
@@ -561,7 +561,7 @@ module bio_lite #(
     always_ff @(posedge clk) begin
         case (snap_input_to_which)
             1'b0: if (penable[0]) gpio_in_snapped <= gpio_in_cleaned;
-           // 1'b1: if (penable[1]) gpio_in_snapped <= gpio_in_cleaned;
+            1'b1: if (penable[1]) gpio_in_snapped <= gpio_in_cleaned;
         endcase
     end
     always_comb begin
@@ -626,7 +626,7 @@ module bio_lite #(
                 .COMPRESSED_ISA(1),
                 .CATCH_MISALIGN(0), .CATCH_ILLINSN(1),
                 .ENABLE_PCPI(0),
-                .ENABLE_MUL(0), .ENABLE_FAST_MUL(1),
+                .ENABLE_MUL(0), .ENABLE_FAST_MUL(0),
                 .ENABLE_DIV(0),
                 .ENABLE_IRQ(0), .ENABLE_IRQ_QREGS(0), .ENABLE_IRQ_TIMER(0),
                 .ENABLE_TRACE(0), .REGS_INIT_ZERO(0),
@@ -659,7 +659,7 @@ module bio_lite #(
                 .stalling_for_event(stalling_for_event[j]),
                 .event_set(event_set[j]), .event_set_valid(event_set_valid[j]),
                 .event_clr(event_clr[j]), .event_clr_valid(event_clr_valid[j]),
-                .core_id(0), .clk_count({{2{1'b0}}, core_clk_count[j]}),
+                .core_id(j[0]), .clk_count(core_clk_count[j]),
                 // Unused
                 .pcpi_valid(), .pcpi_insn(), .pcpi_rs1(), .pcpi_rs2(),
                 .pcpi_wr('0), .pcpi_rd('0), .pcpi_wait('0), .pcpi_ready('0),
