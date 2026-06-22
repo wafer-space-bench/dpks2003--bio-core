@@ -76,6 +76,8 @@ module chip_core #(
     assign bidir_out[2] = irq[1];
     assign bidir_oe[2]  = 1'b1;
 
+    assign irq[1] = 0;
+
     // GPIO — bidirectional
     assign bidir_out[18:3] = gpio_out;
     assign bidir_oe[18:3]  = gpio_dir;
@@ -106,7 +108,7 @@ module chip_core #(
         .gpio_in   (gpio_in),
         .gpio_out  (gpio_out),
         .gpio_dir  (gpio_dir),
-        .irq       (irq)
+        .irq       (irq[0])
     );
 
 endmodule

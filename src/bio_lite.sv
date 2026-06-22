@@ -23,7 +23,7 @@
 //   - IRQ reduced to 2 channels (matches core count)
 
 module bio_lite #(
-    parameter NUM_MACH = 2,
+    parameter NUM_MACH = 1,
     parameter MEM_SIZE_BYTES = 32'h0800
 )(
     input  logic        clk,
@@ -182,12 +182,11 @@ module bio_lite #(
             host_event_set <= '0; host_event_set_valid <= 0;
             host_event_clr <= '0; host_event_clr_valid <= 0;
             use_extclk <= '0;
-            extclk_gpio[0] <= '0; extclk_gpio[1] <= '0;
+            extclk_gpio[0] <= '0;
             fifo_to_reset <= '0; do_fifo_clr <= 0;
             div_int[0] <= '0; div_frac[0] <= '0; unused_div[0] <= '0;
-            div_int[1] <= '0; div_frac[1] <= '0; unused_div[1] <= '0;
             sync_bypass <= '0; oe_invert <= '0; out_invert <= '0; in_invert <= '0;
-            irqmask[0] <= '0; irqmask[1] <= '0; irq_edge <= '0;
+            irqmask[0] <= '0; irq_edge <= '0;
             ctl_action <= 0; ctl_action_q <= 0;
         end else begin
             // Clear single-cycle action pulses
@@ -213,16 +212,14 @@ module bio_lite #(
                     8'h34: {fifo_event_gt_mask, fifo_event_eq_mask, fifo_event_lt_mask} <= host_wdata[23:0];
                     8'h38: begin host_event_set <= host_wdata[23:0]; host_event_set_valid <= 1; end
                     8'h3C: begin host_event_clr <= host_wdata[23:0]; host_event_clr_valid <= 1; end
-                    8'h44: {extclk_gpio[1], extclk_gpio[0], use_extclk} <= host_wdata[NUM_MACH+9:0];
+                    8'h44: {extclk_gpio[0], use_extclk} <= host_wdata[5:0];
                     8'h48: begin fifo_to_reset <= host_wdata[3:0]; do_fifo_clr <= 1; end
                     8'h50: {div_int[0], div_frac[0], unused_div[0]} <= host_wdata;
-                    8'h54: {div_int[1], div_frac[1], unused_div[1]} <= host_wdata;
                     8'h60: sync_bypass <= host_wdata;
                     8'h64: oe_invert   <= host_wdata;
                     8'h68: out_invert  <= host_wdata;
                     8'h6C: in_invert   <= host_wdata;
                     8'h70: irqmask[0]  <= host_wdata;
-                    8'h74: irqmask[1]  <= host_wdata;
                     8'h80: irq_edge    <= host_wdata[NUM_MACH-1:0];
                     default: ;
                 endcase
@@ -257,13 +254,11 @@ module bio_lite #(
             8'h2C: host_rdata = fdout[3];
             8'h40: host_rdata = aggregated_events;
             8'h50: host_rdata = {div_int[0], div_frac[0], unused_div[0]};
-            8'h54: host_rdata = {div_int[1], div_frac[1], unused_div[1]};
             8'h60: host_rdata = sync_bypass;
             8'h64: host_rdata = oe_invert;
             8'h68: host_rdata = out_invert;
             8'h6C: host_rdata = in_invert;
             8'h70: host_rdata = irqmask[0];
-            8'h74: host_rdata = irqmask[1];
             8'h84: host_rdata = gpio_out;
             8'h88: host_rdata = gpio_dir;
             8'hF0: host_rdata = host_imem_rdata;
@@ -331,14 +326,14 @@ module bio_lite #(
     );
 
     // Core 1 IMEM
-    sram_512x32 u_imem_core1 (
-        .clk     (clk),
-        .addr    (ram_addr[1][8:0]),
-        .wr_en   (ram_wr_en[1]),
-        .wr_mask (ram_wr_mask[1]),
-        .wr_data (ram_wr_data[1]),
-        .rd_data (ram_rd_data[1])
-    );
+    //sram_512x32 u_imem_core1 (
+    //    .clk     (clk),
+    //    .addr    (ram_addr[1][8:0]),
+    //    .wr_en   (ram_wr_en[1]),
+    //    .wr_mask (ram_wr_mask[1]),
+    //    .wr_data (ram_wr_data[1]),
+    //    .rd_data (ram_rd_data[1])
+    //);
 
 
     // IMEM host readback — mux based on selected core
@@ -413,31 +408,28 @@ module bio_lite #(
     // =====================================================================
     generate
         for (genvar k = 0; k < 4; k = k + 1) begin: mach_to_fifo
-            priority_demux #(.DATAW(32), .LEVELS(NUM_MACH + 1)) select_wdata (
+            priority_demux #(.DATAW(32), .LEVELS(2)) select_wdata (
                 .stb({
-                    mach_regfifo_wr[1][k] & en_sync[1],
                     mach_regfifo_wr[0][k] & en_sync[0],
                     push[k]
                 }),
-                .data_in({fdin[k], mach_regfifo_wdata[0], mach_regfifo_wdata[1]}),
+                .data_in({fdin[k], mach_regfifo_wdata[0]}),
                 .data_out(regfifo_wdata[k])
             );
-            priority_demux #(.DATAW(1), .LEVELS(NUM_MACH + 1)) select_wr (
+            priority_demux #(.DATAW(1), .LEVELS(2)) select_wr (
                 .stb({
-                    mach_regfifo_wr[1][k] & en_sync[1],
                     mach_regfifo_wr[0][k] & en_sync[0],
                     push[k]
                 }),
-                .data_in({push[k], mach_regfifo_wr[0][k], mach_regfifo_wr[1][k]}),
+                .data_in({push[k], mach_regfifo_wr[0][k]}),
                 .data_out(regfifo_we[k])
             );
-            priority_demux #(.DATAW(1), .LEVELS(NUM_MACH + 1)) select_rd (
+            priority_demux #(.DATAW(1), .LEVELS(2)) select_rd (
                 .stb({
-                    mach_regfifo_rd[1][k] & en_sync[1],
                     mach_regfifo_rd[0][k] & en_sync[0],
                     pull[k]
                 }),
-                .data_in({pull[k], mach_regfifo_rd[0][k], mach_regfifo_rd[1][k]}),
+                .data_in({pull[k], mach_regfifo_rd[0][k]}),
                 .data_out(regfifo_re[k])
             );
         end
@@ -472,14 +464,14 @@ module bio_lite #(
         end
     endgenerate
 
-    priority_demux #(.DATAW(24), .LEVELS(NUM_MACH + 1)) event_set_aggregator (
+    priority_demux #(.DATAW(24), .LEVELS(2)) event_set_aggregator (
         .stb({event_set_valid, host_event_set_valid}),
-        .data_in({host_event_set, event_set[0], event_set[1]}),
+        .data_in({host_event_set, event_set[0]}),
         .data_out(event_set_agg)
     );
-    priority_demux #(.DATAW(24), .LEVELS(NUM_MACH + 1)) event_clr_aggregator (
+    priority_demux #(.DATAW(24), .LEVELS(2)) event_clr_aggregator (
         .stb({event_clr_valid, host_event_clr_valid}),
-        .data_in({host_event_clr, event_clr[0], event_clr[1]}),
+        .data_in({host_event_clr, event_clr[0]}),
         .data_out(event_clr_agg)
     );
     scc_ff #(.RESET(0), .WIDTH(24)) event_aggregator (
@@ -506,30 +498,14 @@ module bio_lite #(
         end
     endgenerate
 
-    // GPIO arbitration — pruned to 2 cores
+    // GPIO arbitration — single core, no priority needed
     logic [31:0] gpio_set_agg, gpio_clr_agg, gpdir_set_agg, gpdir_clr_agg;
     generate
         for (genvar g = 0; g < 32; g = g + 1) begin: gen_gpio
-            priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpio_set_aggregator (
-                .stb({gpio_set[1][g] & gpio_set_valid[1], gpio_set[0][g] & gpio_set_valid[0]}),
-                .data_in({gpio_set[0][g], gpio_set[1][g]}),
-                .data_out(gpio_set_agg[g])
-            );
-            priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpio_clr_aggregator (
-                .stb({gpio_clr[1][g] & gpio_clr_valid[1], gpio_clr[0][g] & gpio_clr_valid[0]}),
-                .data_in({gpio_clr[0][g], gpio_clr[1][g]}),
-                .data_out(gpio_clr_agg[g])
-            );
-            priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpdir_set_aggregator (
-                .stb({gpdir_set[1][g] & gpdir_set_valid[1], gpdir_set[0][g] & gpdir_set_valid[0]}),
-                .data_in({gpdir_set[0][g], gpdir_set[1][g]}),
-                .data_out(gpdir_set_agg[g])
-            );
-            priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpdir_clr_aggregator (
-                .stb({gpdir_clr[1][g] & gpdir_clr_valid[1], gpdir_clr[0][g] & gpdir_clr_valid[0]}),
-                .data_in({gpdir_clr[0][g], gpdir_clr[1][g]}),
-                .data_out(gpdir_clr_agg[g])
-            );
+            assign gpio_set_agg[g]  = (gpio_set_valid[0])  ? gpio_set[0][g]  : 1'b0;
+            assign gpio_clr_agg[g]  = (gpio_clr_valid[0])  ? gpio_clr[0][g]  : 1'b0;
+            assign gpdir_set_agg[g] = (gpdir_set_valid[0]) ? gpdir_set[0][g] : 1'b0;
+            assign gpdir_clr_agg[g] = (gpdir_clr_valid[0]) ? gpdir_clr[0][g] : 1'b0;
         end
     endgenerate
 
@@ -549,7 +525,7 @@ module bio_lite #(
         if (snap_output_to_quantum) begin
             case (snap_output_to_which)
                 1'b0: if (penable[0]) begin gpio_out <= gpio_out_int; gpio_dir <= gpio_dir_int; end
-                1'b1: if (penable[1]) begin gpio_out <= gpio_out_int; gpio_dir <= gpio_dir_int; end
+                //1'b1: if (penable[1]) begin gpio_out <= gpio_out_int; gpio_dir <= gpio_dir_int; end
             endcase
         end else begin
             gpio_out <= gpio_out_int;
@@ -561,7 +537,7 @@ module bio_lite #(
     always_ff @(posedge clk) begin
         case (snap_input_to_which)
             1'b0: if (penable[0]) gpio_in_snapped <= gpio_in_cleaned;
-            1'b1: if (penable[1]) gpio_in_snapped <= gpio_in_cleaned;
+           // 1'b1: if (penable[1]) gpio_in_snapped <= gpio_in_cleaned;
         endcase
     end
     always_comb begin
@@ -659,7 +635,7 @@ module bio_lite #(
                 .stalling_for_event(stalling_for_event[j]),
                 .event_set(event_set[j]), .event_set_valid(event_set_valid[j]),
                 .event_clr(event_clr[j]), .event_clr_valid(event_clr_valid[j]),
-                .core_id(j[0]), .clk_count(core_clk_count[j]),
+                .core_id(0), .clk_count({{2{1'b0}}, core_clk_count[j]}),
                 // Unused
                 .pcpi_valid(), .pcpi_insn(), .pcpi_rs1(), .pcpi_rs2(),
                 .pcpi_wr('0), .pcpi_rd('0), .pcpi_wait('0), .pcpi_ready('0),

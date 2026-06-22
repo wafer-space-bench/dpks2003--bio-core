@@ -1,5 +1,4 @@
 MACROS:
-  # required: will be replaced with actual content
   gf180mcu_ws_ip__qrcode_id:
     gds:
       - dir::../ip/gf180mcu_ws_ip__qrcode_id/gds/gf180mcu_ws_ip__qrcode_id.gds
@@ -15,7 +14,6 @@ MACROS:
         location: [26, 26]
         orientation: N
 
-  # required: will be replaced with actual content
   gf180mcu_ws_ip__shuttle_id:
     gds:
       - dir::../ip/gf180mcu_ws_ip__shuttle_id/gds/gf180mcu_ws_ip__shuttle_id.gds
@@ -31,7 +29,6 @@ MACROS:
         location: [26, 175.6]
         orientation: E
 
-  # required: will be replaced with actual content
   gf180mcu_ws_ip__project_id:
     gds:
       - dir::../ip/gf180mcu_ws_ip__project_id/gds/gf180mcu_ws_ip__project_id.gds
@@ -47,7 +44,6 @@ MACROS:
         location: [175.6, 26]
         orientation: N
 
-  # required: top right corner marker
   gf180mcu_ws_ip__marker:
     gds:
       - dir::../ip/gf180mcu_ws_ip__marker/gds/gf180mcu_ws_ip__marker.gds
@@ -78,7 +74,34 @@ MACROS:
         location: [26, "expr::$DIE_AREA[3] - 169.25"]
         orientation: N
 
-  # 5V SRAM
+  # ============================================================
+  # BIO-lite SRAM: 8x sram512x8 -> two 512x32 memories
+  #
+  # WHOLE-MEMORY-PER-CORE  (modeled on gregdavill/racquet, which
+  # tapes out clean keeping every memory next to its own core).
+  #
+  #   TOP block    = ALL of core1's 512x32  (byte0..3)
+  #   BOTTOM block = ALL of core0's 512x32  (byte0..3)
+  #
+  # WHY: picorv32 fetches a full 32-bit word every cycle, so each
+  # core's 4 byte-slices share an address bus + 32 data bits. The
+  # previous floorplan split each core's bytes top/bottom, forcing
+  # that 32-bit bus to span the 2247 um channel -> M3 saturated
+  # (GRT-0228). Keeping each core's 4 slices in one 2x2 block keeps
+  # that bus inside ~864 x 971 um, next to the core that uses it.
+  #
+  # Coordinates and the 2x2 geometry are UNCHANGED from your
+  # working FN floorplan - only the instance->slot assignment moved.
+  #
+  # ORIENTATION NOTE (verify, do not assume):
+  #   Top block uses N    -> pins face DOWN into the centre channel.
+  #   Bottom block uses FN -> this is the value that passed DPL for
+  #   you. The pin edge SHOULD face UP toward core0's logic in the
+  #   centre. Confirm with the ODB pin check (see chat) - if FN
+  #   points the pins at the bottom die edge, switch the bottom
+  #   block to FS and re-run. With the new buffer-discipline config,
+  #   FS may now legalise where it didn't before.
+  # ============================================================
   gf180mcu_fd_ip_sram__sram512x8m8wm1:
     gds:
       - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/gds/gf180mcu_fd_ip_sram__sram512x8m8wm1.gds
@@ -94,16 +117,36 @@ MACROS:
       "*_ss_125C_4v50":
         - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__ss_125C_4v50.lib
     instances:
-      # Make sure to specify the SRAMs in pdn_cfg.tcl
-      i_chip_core.sram_0:
-        location: [490, 500]
-        orientation: N
-      i_chip_core.sram_1:
-        location: [970, 500]
-        orientation: E
+      # --- TOP block: core1's entire 512x32 (pins face DOWN) ---
+      i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte0:
+        location: ["expr::450", "expr::480 + 0*932"]
+        orientation: W
+      i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte1:
+        location: ["expr::450", "expr::480 + 1*932"]
+        orientation: W
+      i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte2:
+        location: ["expr::450", "expr::480 + 2*932"]
+        orientation: W
+      i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte3:
+        location: ["expr::450", "expr::480 + 3*932"]
+        orientation: W
 
-# This is an alternative method compared to
-# specifying the power connections in the RTL
+      # --- BOTTOM block: core0's entire 512x32 (pins face UP) ---
+      #i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte0:
+      #  location: ["expr::500", "expr::480 + 0.5*932"]
+      #  orientation: W
+      #i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte1:
+      #  location: ["expr::500", "expr::480 + 1.5*932"]
+      #  orientation: W
+      #i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte2:
+      #  location: ["expr::500", "expr::480 + 2.5*932"]
+      #  orientation: W
+      #i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte3:
+      #  location: ["expr::500", "expr::480 + 3.5*932"]
+      #  orientation: W
+
 PDN_MACRO_CONNECTIONS:
-- "i_chip_core.sram_0 VDD VSS VDD VSS"
-- "i_chip_core.sram_1 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte0 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte1 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte2 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte3 VDD VSS VDD VSS"

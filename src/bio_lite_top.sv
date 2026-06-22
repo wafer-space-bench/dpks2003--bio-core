@@ -5,7 +5,7 @@
 // GPIO mirroring: 16 physical pins → 32 internal slots.
 
 module bio_lite_top #(
-    parameter NUM_MACH = 2,
+    parameter NUM_MACH = 1,
     parameter NUM_GPIO = 16
 )(
     input  wire        clk,
