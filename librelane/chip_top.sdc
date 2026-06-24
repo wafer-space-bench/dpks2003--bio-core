@@ -26,6 +26,12 @@ if { $::env(CLOCK_PORT) == $::env(CLOCK_NET) } {
 puts "\[INFO] Using clock $clock_port…"
 create_clock {*}$port_args -name $clock_port -period $::env(CLOCK_PERIOD)
 
+create_generated_clock -name core_clk \
+  -source [get_pins i_chip_core.u_bio_lite.u_bio.mach[0].icg/CLK] \
+  -master_clock clk_PAD \
+  -divide_by 1 \
+  [get_pins i_chip_core.u_bio_lite.u_bio.mach[0].icg/Q]
+
 set input_delay_value [expr $::env(CLOCK_PERIOD) * $::env(IO_DELAY_CONSTRAINT) / 100]
 set output_delay_value [expr $::env(CLOCK_PERIOD) * $::env(IO_DELAY_CONSTRAINT) / 100]
 puts "\[INFO] Setting output delay to: $output_delay_value"

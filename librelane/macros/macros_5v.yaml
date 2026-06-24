@@ -119,17 +119,17 @@ MACROS:
     instances:
       # --- TOP block: core1's entire 512x32 (pins face DOWN) ---
       i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte0:
-        location: ["expr::450", "expr::480 + 0*932"]
-        orientation: W
+        location: [535.92,4170.88 ]
+        orientation: N
       i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte1:
-        location: ["expr::450", "expr::480 + 1*932"]
-        orientation: W
+        location: [967.78, 4170.88]
+        orientation: N
       i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte2:
-        location: ["expr::450", "expr::480 + 2*932"]
-        orientation: W
+        location: [535.92,3684.8]
+        orientation: N
       i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte3:
-        location: ["expr::450", "expr::480 + 3*932"]
-        orientation: W
+        location: [967.78, 3684.8]
+        orientation: N
 
       # --- BOTTOM block: core0's entire 512x32 (pins face UP) ---
       #i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte0:

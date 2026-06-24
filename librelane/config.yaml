@@ -33,7 +33,13 @@ SLANG_ARGUMENTS: ['--keep-hierarchy']
 SYNTH_STRATEGY: "AREA 3"
 SYNTH_SIZING: True
 # Raise fanout limit so the resizer inserts FEWER fanout buffers.
-# MAX_FANOUT_CONSTRAINT: 15
+MAX_FANOUT_CONSTRAINT: 25
+
+CTS_APPLY_NDR: none
+
+#GPL_CELL_PADDING: 2
+#DPL_CELL_PADDING: 2
+
 
 # CLOCK ROUTING LAYERS: REMOVED.
 # The 0.5x1 racquet (same slot) does NOT force clock layers - it lets the
@@ -43,6 +49,7 @@ SYNTH_SIZING: True
 
 VERILOG_DEFINES:
 - USE_GF180_SRAM
+
 
 # Slightly smaller file sizes
 PRIMARY_GDSII_STREAMOUT_TOOL: klayout
@@ -68,7 +75,11 @@ IGNORE_DISCONNECTED_MODULES:
 
 # Clock
 CLOCK_PORT: clk_PAD
-CLOCK_NET: clk_pad/Y
+CLOCK_NET: 
+  - clk_pad/Y
+  - clk_PAD2CORE
+  - i_chip_core.u_bio_lite.u_bio.core_clk
+
 # NOTE: 50 = 20 MHz. The 0.5x1 racquet runs 100 (10 MHz). A tighter
 # period drives more timing-fix buffers -> more M3 horizontal demand.
 # If your spec allows, relaxing this toward 80-100 is the single biggest
@@ -76,7 +87,7 @@ CLOCK_NET: clk_pad/Y
 CLOCK_PERIOD: 100
 
 # --- Resizer margins : keep buffer count down ---
-PL_RESIZER_HOLD_SLACK_MARGIN: 0.35
+PL_RESIZER_HOLD_SLACK_MARGIN: 0.1
 GRT_RESIZER_HOLD_SLACK_MARGIN: 0.3
 PL_RESIZER_SETUP_SLACK_MARGIN: 0.25
 GRT_RESIZER_SETUP_SLACK_MARGIN: 0.2
@@ -85,9 +96,9 @@ GRT_RESIZER_SETUP_SLACK_MARGIN: 0.2
 # Previous run inserted 13,763 buffers (+19.2% area) and pushed wirelength
 # to ~9.6M um, dumping horizontal wire onto the already-saturated Metal3.
 # 5% margins overfix slew/cap and manufacture buffers -> set to 0.
-#DESIGN_REPAIR_MAX_SLEW_PCT: 0
-#DESIGN_REPAIR_MAX_CAP_PCT: 0
-#DESIGN_REPAIR_REMOVE_BUFFERS: True
+DESIGN_REPAIR_MAX_SLEW_PCT: 20
+DESIGN_REPAIR_MAX_CAP_PCT: 20
+DESIGN_REPAIR_REMOVE_BUFFERS: True
 
 # Keep post-GRT timing resize (racquet parity) but TURN OFF the post-GRT
 # design-repair pass - that pass is the main source of the buffer bloat
@@ -97,7 +108,7 @@ GRT_RESIZER_SETUP_SLACK_MARGIN: 0.2
 
 # Density: racquet 0.5x1 routes at 65; congestion here is layer-specific
 # (Metal3), not density, so 60 is fine. Do NOT chase this lower.
-PL_TARGET_DENSITY_PCT: 45
+PL_TARGET_DENSITY_PCT: 20
 # Keep true so GRT completes and prints the GRT-0096 report. If it loops
 # in "GRT-0101 extra iterations" for more than ~30 min, Ctrl-C and set
 # this to false for a fast fail-and-report diagnostic run.
@@ -125,8 +136,8 @@ PDN_HPITCH: 75
 # PDN - Core ring
 PDN_CORE_RING: True
 # Maximum metal width without slotting: 30um
-PDN_CORE_RING_VWIDTH: 25
-PDN_CORE_RING_HWIDTH: 25
+PDN_CORE_RING_VWIDTH: 20
+PDN_CORE_RING_HWIDTH: 20
 PDN_CORE_RING_CONNECT_TO_PADS: True
 # PDN vertical stays on Metal4 - your custom pdn/pdn_cfg.tcl is hardwired
 # for Metal4 macro straps; moving it to Metal2 caused PDN-0003. Leave it.
