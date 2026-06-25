@@ -1,77 +1,82 @@
-# SRAM macros
+# BIO-lite SRAM PDN configuration
+# 8 instances, all N orientation, no brackets in names
 
-define_pdn_grid \
-    -macro \
-    -instances i_chip_core.sram_0 \
-    -name sram_macros_NS \
-    -starts_with POWER \
-    -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"
+# Core 0 SRAMs
+foreach idx {0 1 2 3} {
+    set inst_name "i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte${idx}"
 
-add_pdn_connect \
-    -grid sram_macros_NS \
-    -layers "$::env(PDN_VERTICAL_LAYER) $::env(PDN_HORIZONTAL_LAYER)"
+    define_pdn_grid \
+        -macro \
+        -instances $inst_name \
+        -name "sram_c0_b${idx}" \
+        -starts_with POWER \
+        -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"
 
-add_pdn_connect \
-    -grid sram_macros_NS \
-    -layers "$::env(PDN_VERTICAL_LAYER) Metal3"
+    add_pdn_connect \
+        -grid "sram_c0_b${idx}" \
+        -layers "$::env(PDN_VERTICAL_LAYER) $::env(PDN_HORIZONTAL_LAYER)"
 
-# Add stripes on W/E edges of SRAM
-add_pdn_stripe \
-    -grid sram_macros_NS \
-    -layer Metal4 \
-    -width 2.36 \
-    -offset 1.18 \
-    -spacing 0.28 \
-    -pitch 426.86 \
-    -starts_with GROUND \
-    -number_of_straps 2
+    add_pdn_connect \
+        -grid "sram_c0_b${idx}" \
+        -layers "$::env(PDN_VERTICAL_LAYER) Metal3"
 
-# Since the above stripes block the top level PDN at Metal4, add some more stripes
-# to improve the PDN's integrity and ensure a better connection for the macro.
-add_pdn_stripe \
-    -grid sram_macros_NS \
-    -layer Metal4 \
-    -width 4.00 \
-    -offset 65.93 \
-    -spacing 0.28 \
-    -pitch 50 \
-    -starts_with GROUND \
-    -number_of_straps 7
+    add_pdn_stripe \
+        -grid "sram_c0_b${idx}" \
+        -layer Metal4 \
+        -width 2.36 \
+        -offset 1.18 \
+        -spacing 0.28 \
+        -pitch 426.86 \
+        -starts_with GROUND \
+        -number_of_straps 2
 
-define_pdn_grid \
-    -macro \
-    -instances i_chip_core.sram_1 \
-    -name sram_macros_WE \
-    -starts_with POWER \
-    -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"
+    add_pdn_stripe \
+        -grid "sram_c0_b${idx}" \
+        -layer Metal4 \
+        -width 4.00 \
+        -offset 65.93 \
+        -spacing 0.28 \
+        -pitch 50 \
+        -starts_with GROUND \
+        -number_of_straps 7
+}
 
-add_pdn_connect \
-    -grid sram_macros_WE \
-    -layers "$::env(PDN_VERTICAL_LAYER) $::env(PDN_HORIZONTAL_LAYER)"
+# Core 1 SRAMs
+foreach idx {0 1 2 3} {
+    set inst_name "i_chip_core.u_bio_lite.u_bio.u_imem_core1.sram_byte${idx}"
 
-add_pdn_connect \
-    -grid sram_macros_WE \
-    -layers "$::env(PDN_VERTICAL_LAYER) Metal3"
+    define_pdn_grid \
+        -macro \
+        -instances $inst_name \
+        -name "sram_c1_b${idx}" \
+        -starts_with POWER \
+        -halo "$::env(PDN_HORIZONTAL_HALO) $::env(PDN_VERTICAL_HALO)"
 
-# Add stripes on W/E edges of SRAM
-add_pdn_stripe \
-    -grid sram_macros_WE \
-    -layer Metal4 \
-    -width 2.36 \
-    -offset 1.18 \
-    -spacing 0.28 \
-    -pitch 479.88 \
-    -starts_with GROUND \
-    -number_of_straps 2
+    add_pdn_connect \
+        -grid "sram_c1_b${idx}" \
+        -layers "$::env(PDN_VERTICAL_LAYER) $::env(PDN_HORIZONTAL_LAYER)"
 
-# Since the above stripes block the top level PDN at Metal4, add some more stripes
-# to improve the PDN's integrity and ensure a better connection for the macro.
-add_pdn_stripe \
-    -grid sram_macros_WE \
-    -layer Metal4 \
-    -width 4.00 \
-    -offset 46.48 \
-    -spacing 0.28 \
-    -pitch 48.48 \
-    -starts_with GROUND \
-    -number_of_straps 9
+    add_pdn_connect \
+        -grid "sram_c1_b${idx}" \
+        -layers "$::env(PDN_VERTICAL_LAYER) Metal3"
+
+    add_pdn_stripe \
+        -grid "sram_c1_b${idx}" \
+        -layer Metal4 \
+        -width 2.36 \
+        -offset 1.18 \
+        -spacing 0.28 \
+        -pitch 426.86 \
+        -starts_with GROUND \
+        -number_of_straps 2
+
+    add_pdn_stripe \
+        -grid "sram_c1_b${idx}" \
+        -layer Metal4 \
+        -width 4.00 \
+        -offset 65.93 \
+        -spacing 0.28 \
+        -pitch 50 \
+        -starts_with GROUND \
+        -number_of_straps 7
+}
