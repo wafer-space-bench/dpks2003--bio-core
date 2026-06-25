@@ -1,5 +1,4 @@
 MACROS:
-  # required: will be replaced with actual content
   gf180mcu_ws_ip__qrcode_id:
     gds:
       - dir::../ip/gf180mcu_ws_ip__qrcode_id/gds/gf180mcu_ws_ip__qrcode_id.gds
@@ -15,7 +14,6 @@ MACROS:
         location: [26, 26]
         orientation: N
 
-  # required: will be replaced with actual content
   gf180mcu_ws_ip__shuttle_id:
     gds:
       - dir::../ip/gf180mcu_ws_ip__shuttle_id/gds/gf180mcu_ws_ip__shuttle_id.gds
@@ -31,7 +29,6 @@ MACROS:
         location: [26, 175.6]
         orientation: E
 
-  # required: will be replaced with actual content
   gf180mcu_ws_ip__project_id:
     gds:
       - dir::../ip/gf180mcu_ws_ip__project_id/gds/gf180mcu_ws_ip__project_id.gds
@@ -47,7 +44,6 @@ MACROS:
         location: [175.6, 26]
         orientation: N
 
-  # required: top right corner marker
   gf180mcu_ws_ip__marker:
     gds:
       - dir::../ip/gf180mcu_ws_ip__marker/gds/gf180mcu_ws_ip__marker.gds
@@ -78,7 +74,6 @@ MACROS:
         location: [26, "expr::$DIE_AREA[3] - 169.25"]
         orientation: N
 
-  # 5V SRAM
   gf180mcu_fd_ip_sram__sram512x8m8wm1:
     gds:
       - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/gds/gf180mcu_fd_ip_sram__sram512x8m8wm1.gds
@@ -94,16 +89,42 @@ MACROS:
       "*_ss_125C_4v50":
         - pdk_dir::libs.ref/gf180mcu_fd_ip_sram/lib/gf180mcu_fd_ip_sram__sram512x8m8wm1__ss_125C_4v50.lib
     instances:
-      # Make sure to specify the SRAMs in pdn_cfg.tcl
-      i_chip_core.sram_0:
-        location: [490, 500]
+      # --- TOP CLUSTER (near die top, clear of power ring) ---
+      # Orientation N: pins face DOWN into the open middle channel
+      i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte0:
+        location: [535.920, 4170.880]
         orientation: N
-      i_chip_core.sram_1:
-        location: [970, 500]
-        orientation: E
+      i_chip_core.u_bio_lite.u_bio.u_imem_core1.sram_byte0:
+        location: [967.780, 4170.880]
+        orientation: N
+      i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte1:
+        location: [535.920, 3684.800]
+        orientation: N
+      i_chip_core.u_bio_lite.u_bio.u_imem_core1.sram_byte1:
+        location: [967.780, 3684.800]
+        orientation: N
 
-# This is an alternative method compared to
-# specifying the power connections in the RTL
+      # --- BOTTOM CLUSTER (near die bottom, clear of power ring) ---
+      # Orientation FN: mirrors about X-axis so pins face UP into the open middle channel
+      i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte2:
+        location: [535.920, 952.560]
+        orientation: FN
+      i_chip_core.u_bio_lite.u_bio.u_imem_core1.sram_byte2:
+        location: [967.780, 952.560]
+        orientation: FN
+      i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte3:
+        location: [535.920, 466.480]
+        orientation: FN
+      i_chip_core.u_bio_lite.u_bio.u_imem_core1.sram_byte3:
+        location: [967.780, 466.480]
+        orientation: FN
+
 PDN_MACRO_CONNECTIONS:
-- "i_chip_core.sram_0 VDD VSS VDD VSS"
-- "i_chip_core.sram_1 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte0 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte1 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte2 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core0.sram_byte3 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core1.sram_byte0 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core1.sram_byte1 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core1.sram_byte2 VDD VSS VDD VSS"
+- "i_chip_core.u_bio_lite.u_bio.u_imem_core1.sram_byte3 VDD VSS VDD VSS"
