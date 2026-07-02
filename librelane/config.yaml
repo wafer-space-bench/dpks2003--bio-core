@@ -84,7 +84,7 @@ CLOCK_NET:
 # period drives more timing-fix buffers -> more M3 horizontal demand.
 # If your spec allows, relaxing this toward 80-100 is the single biggest
 # lever to cut the buffer count that is flooding Metal3.
-CLOCK_PERIOD: 100
+CLOCK_PERIOD: 50
 
 # --- Resizer margins : keep buffer count down ---
 PL_RESIZER_HOLD_SLACK_MARGIN: 0.1
