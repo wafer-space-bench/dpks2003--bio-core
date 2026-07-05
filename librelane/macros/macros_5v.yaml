@@ -87,7 +87,7 @@ MACROS:
         - dir::../ip/gf180mcu_dpk_ip__logo/lib/gf180mcu_dpk_ip__logo.lib
     instances:
       dpk_logo:
-        location: ["expr::$DIE_AREA[2] + -187.5 + -30", 50]
+        location: ["expr::$DIE_AREA[2] + -169.25", 26]
         orientation: N
 
 
