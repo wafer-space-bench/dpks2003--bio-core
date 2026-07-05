@@ -72,6 +72,7 @@ IGNORE_DISCONNECTED_MODULES:
 - gf180mcu_ws_ip__project_id
 - gf180mcu_ws_ip__logo
 - gf180mcu_ws_ip__marker
+- gf180mcu_dpk_ip__logo
 
 # Clock
 CLOCK_PORT: clk_PAD
@@ -84,10 +85,10 @@ CLOCK_NET:
 # period drives more timing-fix buffers -> more M3 horizontal demand.
 # If your spec allows, relaxing this toward 80-100 is the single biggest
 # lever to cut the buffer count that is flooding Metal3.
-CLOCK_PERIOD: 50
+CLOCK_PERIOD: 100
 
 # --- Resizer margins : keep buffer count down ---
-PL_RESIZER_HOLD_SLACK_MARGIN: 0.1
+PL_RESIZER_HOLD_SLACK_MARGIN: 0.4
 GRT_RESIZER_HOLD_SLACK_MARGIN: 0.3
 PL_RESIZER_SETUP_SLACK_MARGIN: 0.25
 GRT_RESIZER_SETUP_SLACK_MARGIN: 0.2
