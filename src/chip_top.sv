@@ -232,6 +232,15 @@ module chip_top #(
 
     // Core design
 
+
+    // Reset synchronizer — async assert, sync release
+    wire rst_n_sync;
+    rst_sync u_rst_sync (
+        .clk       (clk_PAD2CORE),
+        .rst_n_in  (rst_n_PAD2CORE),
+        .rst_n_out (rst_n_sync)
+    );
+
     chip_core #(
         .NUM_INPUT_PADS  (NUM_INPUT_PADS),
         .NUM_BIDIR_PADS  (NUM_BIDIR_PADS),
@@ -243,7 +252,7 @@ module chip_top #(
         `endif
     
         .clk        (clk_PAD2CORE),
-        .rst_n      (rst_n_PAD2CORE),
+        .rst_n      (rst_n_sync),
     
         .input_in   (input_PAD2CORE),
         .input_pu   (input_CORE2PAD_PU),

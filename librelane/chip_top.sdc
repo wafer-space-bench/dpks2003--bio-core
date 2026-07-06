@@ -1,6 +1,9 @@
 current_design $::env(DESIGN_NAME)
 set_units -time ns
 
+set_false_path -from [get_ports rst_n_PAD]
+set_false_path -from [get_ports {input_PAD[*] bidir_PAD[*]}]
+
 set clock_port __VIRTUAL_CLK__
 if { [info exists ::env(CLOCK_PORT)] } {
     set port_count [llength $::env(CLOCK_PORT)]
