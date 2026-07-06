@@ -20,6 +20,7 @@ VERILOG_FILES:
 - dir::../src/picorv32.v
 - dir::../src/regfifo.v
 - dir::../src/pio_divider.v
+- dir::../src/rst_sync.v
 
 # NOTE: macro placement lives in the separate macros_5v.yaml (whole-
 # memory-per-core). That file is correct as-is and is included by your
