@@ -614,7 +614,21 @@ module bio_lite #(
             );
 
             // Clock gate
+            //gf180mcu_fd_sc_mcu7t5v0__icgtp_1 icg (.CLK(clk), .E(~stall[j]), .TE(1'b0), .Q(core_clk[j]));
+
+
+            `ifdef USE_GF180_SRAM
+            
             gf180mcu_fd_sc_mcu7t5v0__icgtp_1 icg (.CLK(clk), .E(~stall[j]), .TE(1'b0), .Q(core_clk[j]));
+            
+            `else
+            
+            reg icg_latch;
+            always @(*) begin
+                if (!clk) icg_latch = ~stall[j];
+            end
+            assign core_clk[j] = clk & icg_latch;
+            `endif
 
             // PicoRV32 core
             picorv32 #(
