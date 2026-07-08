@@ -5,8 +5,7 @@
 // GPIO mirroring: 16 physical pins → 32 internal slots.
 
 module bio_lite_top #(
-    parameter NUM_MACH = 2,
-    parameter NUM_GPIO = 16
+    parameter NUM_MACH = 2
 )(
     input  wire        clk,
     input  wire        reset_n,
@@ -18,27 +17,16 @@ module bio_lite_top #(
     output wire        spi_miso,
 
     // GPIO (physical pins)
-    input  wire [NUM_GPIO-1:0] gpio_in,
-    output wire [NUM_GPIO-1:0] gpio_out,
-    output wire [NUM_GPIO-1:0] gpio_dir,
+    input  wire [31:0] gpio_in,
+    output wire [31:0] gpio_out,
+    output wire [31:0] gpio_dir,
 
     // IRQ
     output wire [NUM_MACH-1:0] irq
 );
 
-    // Internal 32-bit GPIO with mirroring
-    wire [31:0] gpio_in_full;
-    wire [31:0] gpio_out_full;
-    wire [31:0] gpio_dir_full;
 
-    // Mirror: physical pins map to both lower and upper 16 slots
-    // This enables bunnie's clocking hack — same signal, different sync/event settings
-    assign gpio_in_full[NUM_GPIO-1:0]  = gpio_in;           // direct: slots 0–15
-    assign gpio_in_full[31:NUM_GPIO]   = gpio_in;           // mirrored: slots 16–31
 
-    // Output: only lower 16 bits drive physical pins
-    assign gpio_out = gpio_out_full[NUM_GPIO-1:0];
-    assign gpio_dir = gpio_dir_full[NUM_GPIO-1:0];
 
     // Host register interface wires (SPI bridge → BIO-lite)
     wire [7:0]  host_addr;
@@ -104,9 +92,9 @@ module bio_lite_top #(
         .clk            (clk),
         .reset_n        (reset_n),
         // GPIO (32-bit internal)
-        .gpio_in        (gpio_in_full),
-        .gpio_out       (gpio_out_full),
-        .gpio_dir       (gpio_dir_full),
+        .gpio_in        (gpio_in),
+        .gpio_out       (gpio_out),
+        .gpio_dir       (gpio_dir),
         // IRQ
         .irq            (irq),
         // Host register interface
