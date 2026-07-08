@@ -57,14 +57,14 @@ module chip_core #(
     // bidir[0]     = spi_miso (output only)
     // bidir[1]     = irq[0] (output only)
     // bidir[2]     = irq[1] (output only)
-    // bidir[3..18] = gpio[0..15] (bidirectional)
-    // bidir[19..43]= unused (tied off)
+    // bidir[3..34] = gpio[0..15] (bidirectional)
+    // bidir[35..43]= unused (tied off)
 
     wire        spi_miso;
     wire [1:0]  irq;
-    wire [15:0] gpio_out;
-    wire [15:0] gpio_dir;
-    wire [15:0] gpio_in;
+    wire [31:0] gpio_out;
+    wire [31:0] gpio_dir;
+    wire [31:0] gpio_in;
 
     // SPI MISO — output only
     assign bidir_out[0] = spi_miso;
@@ -77,13 +77,13 @@ module chip_core #(
     assign bidir_oe[2]  = 1'b1;
 
     // GPIO — bidirectional
-    assign bidir_out[18:3] = gpio_out;
-    assign bidir_oe[18:3]  = gpio_dir;
-    assign gpio_in         = bidir_in[18:3];
+    assign bidir_out[34:3] = gpio_out;
+    assign bidir_oe[34:3]  = gpio_dir;
+    assign gpio_in         = bidir_in[34:3];
 
     // Unused pads — tied off
-    assign bidir_out[NUM_BIDIR_PADS-1:19] = {(NUM_BIDIR_PADS-19){1'b0}};
-    assign bidir_oe[NUM_BIDIR_PADS-1:19]  = {(NUM_BIDIR_PADS-19){1'b0}};
+    assign bidir_out[NUM_BIDIR_PADS-1:35] = {(NUM_BIDIR_PADS-35){1'b0}};
+    assign bidir_oe[NUM_BIDIR_PADS-1:35]  = {(NUM_BIDIR_PADS-35){1'b0}};
 
     // Pad configuration (all bidir pads)
     assign bidir_cs = {NUM_BIDIR_PADS{1'b0}};  // CMOS buffer mode
