@@ -9,11 +9,12 @@
 
 module sram_512x32 (
     input  wire        clk,
+    input  wire        reset_n, 
     input  wire [8:0]  addr,       // 9-bit address (512 words)
     input  wire        wr_en,      // write enable (active high)
     input  wire [3:0]  wr_mask,    // byte write mask (active high, per byte)
     input  wire [31:0] wr_data,    // write data
-    output reg  [31:0] rd_data     // read data (registered, 1-cycle latency)
+    output wire [31:0] rd_data     // read data (registered, 1-cycle latency)
 );
 
 `ifdef USE_GF180_SRAM
@@ -29,7 +30,7 @@ module sram_512x32 (
     //
     // Our signals are ACTIVE HIGH, so we invert at the boundary.
 
-    wire        cen  = 1'b0;               // always enabled
+    wire        cen  = ~reset_n;               // always enabled
     wire        gwen = ~wr_en;             // invert: our wr_en=1 → GWEN=0 (write)
     wire [7:0]  wen0 = wr_mask[0] ? 8'h00 : 8'hFF;  // invert: mask=1 → WEN=0 (write)
     wire [7:0]  wen1 = wr_mask[1] ? 8'h00 : 8'hFF;
@@ -79,9 +80,9 @@ module sram_512x32 (
     );
 
     // Registered read output (SRAM Q is already registered internally)
-    always @(posedge clk) begin
-        rd_data <= {q3, q2, q1, q0};
-    end
+    
+    assign rd_data = {q3, q2, q1, q0};
+    
 
 `else
 
