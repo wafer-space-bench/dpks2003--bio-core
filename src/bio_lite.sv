@@ -684,16 +684,23 @@ module bio_lite #(
         end
     endgenerate
 
-    // =====================================================================
+// =====================================================================
     // FIFO INSTANTIATION (always 4 FIFOs)
-    // FIFO reset includes core restart (bio_bdma.sv line 1969)
+    // bio_bdma semantics (line 1969): FIFO k is reset by restart of core k.
+    // With NUM_MACH=2, FIFOs 2..3 have no owning core: cleared only by
+    // host FIFO_CLR (reg 0x48) or chip reset.
     // =====================================================================
-
-    // TODO : proper Restart thingy
     generate
         for (genvar k = 0; k < 4; k = k + 1) begin: fifos
+            wire fifo_restart;
+            if (k < NUM_MACH) begin : g_core_rst
+                assign fifo_restart = restart[k];
+            end else begin : g_no_core_rst
+                assign fifo_restart = 1'b0;
+            end
+
             regfifo regfifo (
-                .reset(reset | (fifo_to_reset[k] & do_fifo_clr) | restart),
+                .reset(reset | (fifo_to_reset[k] & do_fifo_clr) | fifo_restart),
                 .aclk(clk),
                 .wdata(regfifo_wdata[k]), .we(regfifo_we[k]), .writable(regfifo_writable[k]),
                 .re(regfifo_re[k]), .readable(regfifo_readable[k]),
