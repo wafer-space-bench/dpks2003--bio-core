@@ -323,6 +323,7 @@ module bio_lite #(
 // Core 0 IMEM
     sram_512x32 u_imem_core0 (
         .clk     (clk),
+        .reset_n (reset_n),
         .addr    (ram_addr[0][8:0]),
         .wr_en   (ram_wr_en[0]),
         .wr_mask (ram_wr_mask[0]),
@@ -333,6 +334,7 @@ module bio_lite #(
     // Core 1 IMEM
     sram_512x32 u_imem_core1 (
         .clk     (clk),
+        .reset_n (reset_n),
         .addr    (ram_addr[1][8:0]),
         .wr_en   (ram_wr_en[1]),
         .wr_mask (ram_wr_mask[1]),
@@ -617,8 +619,8 @@ module bio_lite #(
             //gf180mcu_fd_sc_mcu7t5v0__icgtp_1 icg (.CLK(clk), .E(~stall[j]), .TE(1'b0), .Q(core_clk[j]));
 
 
-            `ifdef USE_GF180_SRAM
-            
+            `ifdef USE_GF180
+
             gf180mcu_fd_sc_mcu7t5v0__icgtp_1 icg (.CLK(clk), .E(~stall[j]), .TE(1'b0), .Q(core_clk[j]));
             
             `else
