@@ -105,7 +105,7 @@ module spi_bio_bridge (
 
     reg [2:0]  state;
     reg [7:0]  cmd_reg;
-    reg [7:0]  addr_reg;
+    reg [8:0]  addr_reg;  // 9 bit to address the 512 word 
     reg [31:0] wdata_reg;
 
     // =====================================================================
@@ -141,7 +141,7 @@ end
         if (!reset_n) begin
             state           <= ST_CMD;
             cmd_reg         <= 8'h0;
-            addr_reg        <= 8'h0;
+            addr_reg        <= 9'h0;
             wdata_reg       <= 32'h0;
             host_wr         <= 1'b0;
             host_rd         <= 1'b0;
@@ -169,13 +169,19 @@ end
                     end
 
                     ST_ADDR: begin
-                        addr_reg <= spi_rx_data;
-                        // For reads, fire rd strobe immediately so data is ready for MISO
+                        // IMEM cmds: capture full 9-bit start address
+                        // (cmd[1] = addr[8]); others: plain 8-bit reg addr
+                        if (cmd_reg == 8'h04 || cmd_reg == 8'h05 ||
+                            cmd_reg == 8'h06 || cmd_reg == 8'h07)
+                            addr_reg <= {cmd_reg[1], spi_rx_data};
+                        else
+                            addr_reg <= {1'b0, spi_rx_data};
+
                         if (cmd_reg == 8'h03) begin
                             host_addr <= spi_rx_data;
                             host_rd   <= 1'b1;
-                        end else if (cmd_reg == 8'h05) begin
-                            host_imem_addr <= {2'b00, spi_rx_data};
+                        end else if (cmd_reg == 8'h05 || cmd_reg == 8'h07) begin
+                            host_imem_addr <= {1'b0, cmd_reg[1], spi_rx_data};
                             host_imem_rd   <= 1'b1;
                         end
                         state <= ST_DATA0;
@@ -198,17 +204,20 @@ end
 
                     ST_DATA3: begin
                         wdata_reg[7:0] <= spi_rx_data;
-                        // Execute write commands
                         if (cmd_reg == 8'h02) begin
-                            host_addr  <= addr_reg;
+                            host_addr  <= addr_reg[7:0];
                             host_wdata <= {wdata_reg[31:8], spi_rx_data};
                             host_wr    <= 1'b1;
-                        end else if (cmd_reg == 8'h04) begin
-                            host_imem_addr  <= {2'b00, addr_reg};
+                            state      <= ST_CMD;
+                        end else if (cmd_reg == 8'h04 || cmd_reg == 8'h06) begin
+                            host_imem_addr  <= {1'b0, addr_reg};  // full 9 bits
                             host_imem_wdata <= {wdata_reg[31:8], spi_rx_data};
                             host_imem_wr    <= 1'b1;
+                            addr_reg        <= addr_reg + 9'd1;   // burst support
+                            state           <= ST_DATA0;          // stay in data phase
+                        end else begin
+                            state <= ST_CMD;
                         end
-                        state <= ST_CMD;
                     end
 
                     default: state <= ST_CMD;
