@@ -90,6 +90,7 @@ module sram_512x32 (
     // Simulation mode: behavioral reg array
     // =========================================================
     reg [31:0] mem [0:511];
+    reg [31:0] rd_data_r ; 
 
     always @(posedge clk) begin
         if (wr_en) begin
@@ -98,9 +99,9 @@ module sram_512x32 (
             if (wr_mask[2]) mem[addr][23:16] <= wr_data[23:16];
             if (wr_mask[3]) mem[addr][31:24] <= wr_data[31:24];
         end
-        rd_data <= mem[addr];
+        rd_data_r <= mem[addr];
     end
-
+    assign rd_data = rd_data_r;
 `endif
 
 endmodule
