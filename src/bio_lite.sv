@@ -658,7 +658,7 @@ module bio_lite #(
                 .COMPRESSED_ISA(1),
                 .CATCH_MISALIGN(0), .CATCH_ILLINSN(1),
                 .ENABLE_PCPI(0),
-                .ENABLE_MUL(0), .ENABLE_FAST_MUL(0),
+                .ENABLE_MUL(0), .ENABLE_FAST_MUL(1),
                 .ENABLE_DIV(0),
                 .ENABLE_IRQ(0), .ENABLE_IRQ_QREGS(0), .ENABLE_IRQ_TIMER(0),
                 .ENABLE_TRACE(0), .REGS_INIT_ZERO(0),
