@@ -399,11 +399,13 @@ module bio_lite #(
                     | stalling_for_event[j]
                 ) || ~en_sync[j];
             end
-            always_ff @(posedge clk) begin
+            always_ff @(posedge clk ) begin
+
                 quantum[j] <= use_extclk[j]
                     ? (extclk_selected[j] & ~extclk_selected_q[j])
                     : penable[j];
                 extclk_selected_q[j] <= extclk_selected[j];
+
             end
         end
     endgenerate
@@ -473,14 +475,19 @@ module bio_lite #(
             end
         end
     endgenerate
-
+    
+    
     priority_demux #(.DATAW(24), .LEVELS(NUM_MACH + 1)) event_set_aggregator (
-        .stb({event_set_valid, host_event_set_valid}),
+        .stb({event_set_valid[1] & en_sync[1],
+              event_set_valid[0] & en_sync[0],
+              host_event_set_valid}),
         .data_in({host_event_set, event_set[0], event_set[1]}),
         .data_out(event_set_agg)
     );
     priority_demux #(.DATAW(24), .LEVELS(NUM_MACH + 1)) event_clr_aggregator (
-        .stb({event_clr_valid, host_event_clr_valid}),
+        .stb({event_clr_valid[1] & en_sync[1],
+              event_clr_valid[0] & en_sync[0],
+              host_event_clr_valid}),
         .data_in({host_event_clr, event_clr[0], event_clr[1]}),
         .data_out(event_clr_agg)
     );
@@ -490,7 +497,6 @@ module bio_lite #(
         .clobber('0), .value('0),
         .q(aggregated_events[23:0])
     );
-
     // =====================================================================
     // GPIO LOGIC (from bio_bdma.sv lines 865–1048)
     // 32-bit internal. sync_bypass uses gpio_in_sync0 (1-stage, not raw).
@@ -509,26 +515,32 @@ module bio_lite #(
     endgenerate
 
     // GPIO arbitration — pruned to 2 cores
+    // NOTE: strobes qualified with en_sync so a disabled core (unclocked,
+    // undefined/random outputs) can never touch the shared GPIO state.
     logic [31:0] gpio_set_agg, gpio_clr_agg, gpdir_set_agg, gpdir_clr_agg;
     generate
         for (genvar g = 0; g < 32; g = g + 1) begin: gen_gpio
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpio_set_aggregator (
-                .stb({gpio_set[1][g] & gpio_set_valid[1], gpio_set[0][g] & gpio_set_valid[0]}),
+                .stb({gpio_set[1][g] & gpio_set_valid[1] & en_sync[1],
+                      gpio_set[0][g] & gpio_set_valid[0] & en_sync[0]}),
                 .data_in({gpio_set[0][g], gpio_set[1][g]}),
                 .data_out(gpio_set_agg[g])
             );
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpio_clr_aggregator (
-                .stb({gpio_clr[1][g] & gpio_clr_valid[1], gpio_clr[0][g] & gpio_clr_valid[0]}),
+                .stb({gpio_clr[1][g] & gpio_clr_valid[1] & en_sync[1],
+                      gpio_clr[0][g] & gpio_clr_valid[0] & en_sync[0]}),
                 .data_in({gpio_clr[0][g], gpio_clr[1][g]}),
                 .data_out(gpio_clr_agg[g])
             );
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpdir_set_aggregator (
-                .stb({gpdir_set[1][g] & gpdir_set_valid[1], gpdir_set[0][g] & gpdir_set_valid[0]}),
+                .stb({gpdir_set[1][g] & gpdir_set_valid[1] & en_sync[1],
+                      gpdir_set[0][g] & gpdir_set_valid[0] & en_sync[0]}),
                 .data_in({gpdir_set[0][g], gpdir_set[1][g]}),
                 .data_out(gpdir_set_agg[g])
             );
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpdir_clr_aggregator (
-                .stb({gpdir_clr[1][g] & gpdir_clr_valid[1], gpdir_clr[0][g] & gpdir_clr_valid[0]}),
+                .stb({gpdir_clr[1][g] & gpdir_clr_valid[1] & en_sync[1],
+                      gpdir_clr[0][g] & gpdir_clr_valid[0] & en_sync[0]}),
                 .data_in({gpdir_clr[0][g], gpdir_clr[1][g]}),
                 .data_out(gpdir_clr_agg[g])
             );
@@ -547,8 +559,12 @@ module bio_lite #(
     );
 
     // Snap-to-quantum output (2 cores, from bio_bdma.sv lines 965–1008)
-    always_ff @(posedge clk) begin
-        if (snap_output_to_quantum) begin
+
+    always_ff @(posedge clk or negedge reset_n) begin
+        if (~reset_n) begin
+            gpio_out <= 32'h0;
+            gpio_dir <= 32'h0;      // all inputs (hi-Z pads) out of reset
+        end else if (snap_output_to_quantum) begin
             case (snap_output_to_which)
                 1'b0: if (penable[0]) begin gpio_out <= gpio_out_int; gpio_dir <= gpio_dir_int; end
                 1'b1: if (penable[1]) begin gpio_out <= gpio_out_int; gpio_dir <= gpio_dir_int; end
@@ -621,7 +637,7 @@ module bio_lite #(
 
             `ifdef USE_GF180
 
-            gf180mcu_fd_sc_mcu7t5v0__icgtp_1 icg (.CLK(clk), .E(~stall[j]), .TE(1'b0), .Q(core_clk[j]));
+            gf180mcu_fd_sc_mcu7t5v0__icgtp_1 icg (.CLK(clk), .E(~stall[j] | restart[j]), .TE(1'b0), .Q(core_clk[j]));
             
             `else
             
@@ -838,7 +854,7 @@ module picorv32_regs_bio #(
             6'b010001: begin rdata1 = regfifo_rdata_1; regfifo_rd[1] = ren1; end
             6'b010010: begin rdata1 = regfifo_rdata_2; regfifo_rd[2] = ren1; end
             6'b010011: begin rdata1 = regfifo_rdata_3; regfifo_rd[3] = ren1; end
-            6'b010100: begin rdata1 = 0; quanta_rd = 1; end
+            6'b010100: begin rdata1 = 0; quanta_rd = ren1; end
             6'b010101: rdata1 = gpio_pins;
             6'b011010: rdata1 = gpio_mask;
             6'b011011: rdata1 = event_mask;
@@ -851,7 +867,7 @@ module picorv32_regs_bio #(
             6'b010001: begin rdata2 = regfifo_rdata_1; regfifo_rd[1] = ren2; end
             6'b010010: begin rdata2 = regfifo_rdata_2; regfifo_rd[2] = ren2; end
             6'b010011: begin rdata2 = regfifo_rdata_3; regfifo_rd[3] = ren2; end
-            6'b010100: begin rdata2 = 0; quanta_rd = 1; end
+            6'b010100: begin rdata2 = 0; quanta_rd = ren2; end
             6'b010101: rdata2 = gpio_pins;
             6'b011010: rdata2 = gpio_mask;
             6'b011011: rdata2 = event_mask;

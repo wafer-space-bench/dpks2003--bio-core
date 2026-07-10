@@ -50,7 +50,7 @@ CTS_APPLY_NDR: none
 
 VERILOG_DEFINES:
 - USE_GF180_SRAM
-
+- USE_GF180
 
 # Slightly smaller file sizes
 PRIMARY_GDSII_STREAMOUT_TOOL: klayout
