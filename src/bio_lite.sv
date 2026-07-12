@@ -362,9 +362,14 @@ module bio_lite #(
             end
 
             // Memory ready — REGISTER_RAM mode (from bio_bdma.sv lines 1834–1840)
-            always_ff @(posedge clk) begin
+            always_ff @(posedge clk or negedge reset_n) begin
+                if (~reset_n)begin
+                mem_valid_d[j] <= 1'b0;
+                dead_cycle[j] <= 1'b0;
+                end else begin 
                 mem_valid_d[j] <= mem_valid[j] || (quanta_halt[j] && mem_valid_d[j]);
                 dead_cycle[j] <= mem_valid_d[j] & mem_ready[j];
+            end
             end
             always_comb begin
                 mem_ready[j] = mem_valid_d[j] && ~dead_cycle[j] && mem_valid[j];
@@ -379,7 +384,7 @@ module bio_lite #(
         for (genvar j = 0; j < NUM_MACH; j = j + 1) begin: stalls
             always_comb begin
                 // extclk MUST use 2-stage sync (bio_bdma.sv line 693)
-                extclk_selected[j] = gpio_in_sync1[extclk_gpio[j]];
+                extclk_selected[j] = use_extclk[j] & gpio_in_sync1[extclk_gpio[j]];
                 stall[j] = (
                     quanta_halt[j] & ~quantum[j]
                     | (mach_regfifo_rd[j] &
@@ -391,13 +396,20 @@ module bio_lite #(
                     | stalling_for_event[j]
                 ) || ~en_sync[j];
             end
-            always_ff @(posedge clk ) begin
-
-                quantum[j] <= use_extclk[j]
-                    ? (extclk_selected[j] & ~extclk_selected_q[j])
-                    : penable[j];
-                extclk_selected_q[j] <= extclk_selected[j];
-
+// extclk_selected_q's D is ANDed with use_extclk so that when the
+            // external-clock feature is off (reset default), no X from a
+            // floating GPIO pad can enter the flop on ANY gate mapping.
+            // The mux select alone does not guarantee this post-synthesis.
+            always_ff @(posedge clk or negedge reset_n) begin
+                if (~reset_n) begin
+                    quantum[j]           <= 1'b0;
+                    extclk_selected_q[j] <= 1'b0;
+                end else begin
+                    quantum[j] <= use_extclk[j]
+                        ? (extclk_selected[j] & ~extclk_selected_q[j])
+                        : penable[j];
+                    extclk_selected_q[j] <= use_extclk[j] & extclk_selected[j];
+                end
             end
         end
     endgenerate
@@ -495,10 +507,19 @@ module bio_lite #(
     // =====================================================================
 
     // Metastability hardening (bio_bdma.sv lines 879–886)
-    always @(posedge clk) begin
-        gpio_in_sync0 <= gpio_in;
-        gpio_in_sync1 <= gpio_in_sync0;
+    // Async reset: unreset synchronizers are X at GL until the pads settle,
+    // and undriven bidir pads (Z) make the input-buffer output X indefinitely.
+    // That X reached quantum -> stall -> ICG enable -> X core clock.
+    always_ff @(posedge clk or negedge reset_n) begin
+        if (~reset_n) begin
+            gpio_in_sync0 <= 32'h0;
+            gpio_in_sync1 <= 32'h0;
+        end else begin
+            gpio_in_sync0 <= gpio_in;
+            gpio_in_sync1 <= gpio_in_sync0;
+        end
     end
+
     generate
         for (genvar m = 0; m < 32; m = m + 1) begin: gen_bypass
             // 1 = 1-stage (faster), 0 = 2-stage (safer). Never raw.
@@ -602,13 +623,27 @@ module bio_lite #(
     logic [NUM_MACH-1:0]       a_restart;
     logic [NUM_MACH-1:0]       a_restart_q[2];
 
-    always_ff @ (posedge clk) begin 
-        
-        a_restart_q[0] <= restart;
-        a_restart_q[1] <= a_restart_q[0];
-        a_restart <= a_restart_q[1];
+// Bootstrap ungate window: hold ICG enable for BOOT_CYCLES after restart so the
+// core completes sync-reset AND its first fetch/decode before the stall cone
+// (which depends on that state) is allowed to gate the clock. 3 cycles was
+// insufficient (covers reset only, not fetch) — see gl_enable_probe2 evidence.
+localparam BOOT_CYCLES = 15;
+logic [3:0] boot_cnt [NUM_MACH];
+logic [NUM_MACH-1:0] boot_fetch_done;
 
-   end
+always_ff @(posedge clk or negedge reset_n) begin
+    if (~reset_n)
+        for (int m = 0; m < NUM_MACH; m++) boot_cnt[m] <= '0;
+    else
+        for (int m = 0; m < NUM_MACH; m++) begin
+            if (restart[m])                boot_cnt[m] <= BOOT_CYCLES;
+            else if (boot_fetch_done[m])   boot_cnt[m] <= '0;
+            else if (boot_cnt[m] != 0)     boot_cnt[m] <= boot_cnt[m] - 1;
+        end
+end
+// per-machine, in the generate:
+
+// ICG (both ifdef branches):  .E(~stall[j] | restart[j] | boot_ungate)
 
     // =====================================================================
     // CORE INSTANTIATION (from bio_bdma.sv lines 1703–1963)
@@ -638,10 +673,14 @@ module bio_lite #(
             // Clock gate
             //gf180mcu_fd_sc_mcu7t5v0__icgtp_1 icg (.CLK(clk), .E(~stall[j]), .TE(1'b0), .Q(core_clk[j]));
 
+            wire boot_ungate = (boot_cnt[j] != 0);
+
+            // first-fetch detector: IMEM handshake completing for machine j
+            assign boot_fetch_done[j] = mem_valid[j] & mem_ready[j];
 
             `ifdef USE_GF180
 
-            gf180mcu_fd_sc_mcu7t5v0__icgtp_1 icg (.CLK(clk), .E(~stall[j]|a_restart[j]), .TE(1'b0), .Q(core_clk[j]));
+            gf180mcu_fd_sc_mcu7t5v0__icgtp_1 icg (.CLK(clk), .E(~stall[j] | restart[j] | boot_ungate), .TE(1'b0), .Q(core_clk[j]));
             
             `else
             

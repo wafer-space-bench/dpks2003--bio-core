@@ -918,6 +918,8 @@ module picorv32 #(
 		is_lbu_lhu_lw <= |{instr_lbu, instr_lhu, instr_lw};
 		is_compare <= |{is_beq_bne_blt_bge_bltu_bgeu, instr_slti, instr_slt, instr_sltiu, instr_sltu};
 
+
+
 		if (mem_do_rinst && mem_done) begin
 			instr_lui     <= mem_rdata_latched[6:0] == 7'b0110111;
 			instr_auipc   <= mem_rdata_latched[6:0] == 7'b0010111;
@@ -1216,6 +1218,10 @@ module picorv32 #(
 			instr_sra   <= 0;
 			instr_or    <= 0;
 			instr_and   <= 0;
+			decoded_rs1 <= 0;
+			decoded_rs2 <= 0;
+			decoded_rd  <= 0;
+			
 
 			instr_fence <= 0;
 		end
