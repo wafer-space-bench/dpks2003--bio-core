@@ -314,6 +314,7 @@ if __name__ == "__main__":
     runner.test(
         hdl_toplevel="chip_top",
         test_module=os.getenv("TEST_MODULE", "chip_top_tb"),
+        testcase=os.getenv("TESTCASE", None),
         waves=bool(os.getenv("WAVES", "0") == "1"),
     )
     
