@@ -117,10 +117,16 @@ async def gl_two_cores_concurrent(dut):
     await spi.bio_write(0x50, QDIV << 16)          # div core0
     await spi.bio_write(0x54, QDIV << 16)          # div core1
     await spi.bio_write(0x00, 0x0000000F)          # restart both | en both
-    await Timer(200_000, unit="ns")
+    await Timer(500_000, unit="ns")
 
+    
+    raw = str(dut.bidir_PAD.value)
+    dut._log.info(f"raw bidir_PAD = {raw}")
+    dut._log.info(f"x_seen after loads = {spi.x_seen}")
     g = read_gpio(dut)
     dut._log.info(f"concurrent gpio = 0x{g:08X}")
+
+    
     assert (g & 0x00000FFF) == 0x00000FFF, f"core0 half wrong: 0x{g:08X}"
     assert (g & 0xFF000000) == 0xFF000000, f"core1 half wrong: 0x{g:08X}"
     assert (g & 0x00FFF000) == 0, f"unclaimed bits driven: 0x{g:08X}"
@@ -198,6 +204,23 @@ async def gl_fifo_restart_policy(dut):
 
 
 # ---------------------------------------------------------------------------
+
+@cocotb.test()
+async def gl_core1_solo(dut):
+    """Isolation: core 1 alone, its first-ever solo enable."""
+    spi = await start_up(dut)
+    await spi.bio_write(0x00, 0x00000000)
+    prog1 = [0xFF0002B7, 0x00028C13, 0x00028D13, 0x00028A93, 0x00000A13, 0xFF9FF06F]
+    await spi.bio_write(0xE0, 1)
+    await spi.bio_imem_burst_write(0, prog1)
+    await spi.bio_write(0x54, 100 << 16)           # DIV1 — see check 3!
+    await spi.bio_write(0x00, 0x0000000A)          # restart1|en1
+    await Timer(200_000, unit="ns")
+    dut._log.info(f"raw = {str(dut.bidir_PAD.value)}")
+    g = read_gpio(dut)
+    assert (g & 0xFF000000) == 0xFF000000, f"core1 solo: 0x{g:08X}"
+
+
 @cocotb.test()
 async def gl_gpio_input_path(dut):
     """GL-unique: bidir pad as INPUT — TB drives a pad, signal traverses the

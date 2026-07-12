@@ -166,18 +166,10 @@ module bio_lite #(
             snap_input_to_quantum <= 0;  snap_input_to_which <= '0;
             fdin[0] <= '0; fdin[1] <= '0; fdin[2] <= '0; fdin[3] <= '0;
             push <= '0; pull <= '0;
-            
-            //TODO : for yosys had to remove type casting 
-            //fifo_event_level <= '{default: '0};
-            
-            fifo_event_level[0] <= 4'd0;
-            fifo_event_level[1] <= 4'd0;
-            fifo_event_level[2] <= 4'd0;
-            fifo_event_level[3] <= 4'd0;
-            fifo_event_level[4] <= 4'd0;
-            fifo_event_level[5] <= 4'd0;
-            fifo_event_level[6] <= 4'd0;
-            fifo_event_level[7] <= 4'd0;
+            fifo_event_level[0] <= '0; fifo_event_level[1] <= '0;
+            fifo_event_level[2] <= '0; fifo_event_level[3] <= '0;
+            fifo_event_level[4] <= '0; fifo_event_level[5] <= '0;
+            fifo_event_level[6] <= '0; fifo_event_level[7] <= '0;
             fifo_event_eq_mask <= '0; fifo_event_lt_mask <= '0; fifo_event_gt_mask <= '0;
             host_event_set <= '0; host_event_set_valid <= 0;
             host_event_clr <= '0; host_event_clr_valid <= 0;
@@ -606,6 +598,18 @@ module bio_lite #(
         end
     endgenerate
 
+
+    logic [NUM_MACH-1:0]       a_restart;
+    logic [NUM_MACH-1:0]       a_restart_q[2];
+
+    always_ff @ (posedge clk) begin 
+        
+        a_restart_q[0] <= restart;
+        a_restart_q[1] <= a_restart_q[0];
+        a_restart <= a_restart_q[1];
+
+   end
+
     // =====================================================================
     // CORE INSTANTIATION (from bio_bdma.sv lines 1703–1963)
     // PROGADDR_RESET = 0, ENABLE_FAST_MUL = 1 (taped-out config)
@@ -637,7 +641,7 @@ module bio_lite #(
 
             `ifdef USE_GF180
 
-            gf180mcu_fd_sc_mcu7t5v0__icgtp_1 icg (.CLK(clk), .E(~stall[j] | restart[j]), .TE(1'b0), .Q(core_clk[j]));
+            gf180mcu_fd_sc_mcu7t5v0__icgtp_1 icg (.CLK(clk), .E(~stall[j]|a_restart[j]), .TE(1'b0), .Q(core_clk[j]));
             
             `else
             
@@ -725,7 +729,11 @@ module bio_lite #(
         end
     endgenerate
 
+
+
 endmodule
+
+
 
 // =========================================================================
 // HELPER MODULES (from bio_bdma.sv, unchanged)

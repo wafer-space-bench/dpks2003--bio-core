@@ -38,6 +38,7 @@ MAX_FANOUT_CONSTRAINT: 25
 
 CTS_APPLY_NDR: none
 
+
 #GPL_CELL_PADDING: 2
 #DPL_CELL_PADDING: 2
 
@@ -51,7 +52,7 @@ CTS_APPLY_NDR: none
 VERILOG_DEFINES:
 - USE_GF180_SRAM
 - USE_GF180
-
+- ALLOW_UNUSED_LINT
 # Slightly smaller file sizes
 PRIMARY_GDSII_STREAMOUT_TOOL: klayout
 
@@ -110,7 +111,7 @@ DESIGN_REPAIR_REMOVE_BUFFERS: True
 
 # Density: racquet 0.5x1 routes at 65; congestion here is layer-specific
 # (Metal3), not density, so 60 is fine. Do NOT chase this lower.
-PL_TARGET_DENSITY_PCT: 20
+PL_TARGET_DENSITY_PCT: 25
 # Keep true so GRT completes and prints the GRT-0096 report. If it loops
 # in "GRT-0101 extra iterations" for more than ~30 min, Ctrl-C and set
 # this to false for a fast fail-and-report diagnostic run.
