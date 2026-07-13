@@ -1,0 +1,24 @@
+SIM = icarus
+TOPLEVEL_LANG = verilog
+TOPLEVEL = bio_lite_top
+
+VERILOG_SOURCES = \
+    $(PWD)/bio_lite.v \
+    $(PWD)/spi_bio_bridge.v \
+    $(PWD)/bio_lite_top.v \
+    $(PWD)/../../src/spi_slave.v \
+    $(PWD)/../../src/picorv32.v \
+    $(PWD)/../../src/regfifo.v \
+    $(PWD)/../../src/pio_divider.v \
+    $(PWD)/../../src/sram_512x32.v \
+    $(PWD)/../../gf180mcu/gf180mcuD/libs.ref/gf180mcu_fd_ip_sram/verilog/gf180mcu_fd_ip_sram__sram512x8m8wm1.v
+
+VERILOG_SOURCES += $(PWD)/../../gf180mcu/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/verilog/primitives.v
+VERILOG_SOURCES += $(PWD)/../../gf180mcu/gf180mcuD/libs.ref/gf180mcu_fd_sc_mcu7t5v0/verilog/gf180mcu_fd_sc_mcu7t5v0.v
+
+COMPILE_ARGS += -DUSE_GF180_ICG -DFUNCTIONAL
+
+COMPILE_ARGS += -DUSE_GF180_SRAM -DFUNCTIONAL -g2012
+
+MODULE ?= test_imem_full_range
+include $(shell cocotb-config --makefiles)/Makefile.sim

@@ -261,3 +261,481 @@ async def gl_gpio_input_path(dut):
     drv.release_all()
     dut._log.info("pad-ring GPIO input path verified at GL")
     await spi.bio_write(0x00, 0x00000000)
+
+@cocotb.test()
+async def gl_first_x_hunt(dut):
+    """core1_solo replay + first-X monitor. Flat-netlist-safe signal discovery."""
+    from cocotb.triggers import RisingEdge
+
+    WANT = ["en_sync", "a_restart", "_000047_", "_000046_",
+            "mach[1].core.clk", "mach[0].core.clk", "latched_stalu",
+            "fifo_restart", "en_latched"]
+    watch = {}
+    for handle in dut:                     # iterate top-level children (flat netlist)
+        n = handle._name
+        if any(w in n for w in WANT):
+            try:
+                _ = handle.value           # only watch value-readable nets
+                watch[n] = handle
+            except Exception:
+                pass
+    dut._log.info(f"watching {len(watch)} signals: {sorted(watch)[:20]} ...")
+
+    first_x = []
+    async def monitor():
+        clean = set(watch)
+        while clean:
+            await RisingEdge(dut.clk_PAD)
+            t = cocotb.utils.get_sim_time("ns")
+            for n in list(clean):
+                if "x" in str(watch[n].value).lower():
+                    dut._log.warning(f"X-ONSET @{t}ns : {n}")
+                    first_x.append((t, n))
+                    clean.discard(n)
+    cocotb.start_soon(monitor())
+
+    spi = await start_up(dut)
+    await spi.bio_write(0x00, 0)
+    prog = [0xFF0002B7, 0x00028C13, 0x00028D13, 0x00028A93, 0x00000A13, 0xFF9FF06F]
+    await spi.bio_write(0xE0, 1)
+    await spi.bio_imem_burst_write(0, prog)
+    await spi.bio_write(0x54, 100 << 16)
+    dut._log.info(f"=== ENABLE WRITE NOW (~{cocotb.utils.get_sim_time('ns')}ns) ===")
+    await spi.bio_write(0x00, 0x0A)
+    await Timer(200_000, unit="ns")
+    dut._log.info(f"final raw = {str(dut.bidir_PAD.value)}")
+    for t, n in sorted(first_x)[:10]:
+        dut._log.info(f"  X order: {t}ns  {n}")
+
+@cocotb.test()
+async def gl_enable_probe(dut):
+    """Cycle-by-cycle table of E / en_sync / restart / a_restart around the
+    core-1 enable write. Run STANDALONE (TESTCASE=gl_enable_probe) — shared-sim
+    contamination from earlier failing tests would pollute it."""
+    from cocotb.triggers import RisingEdge
+
+    # --- signal discovery on the flat netlist ---
+    watch = {}
+    for handle in dut:
+        n = handle._name
+        if n == "_000046_":
+            watch["E_core1"] = handle
+        elif "en_sync" in n:
+            watch[f"en_sync:{n[-6:]}"] = handle          # short label
+        elif "a_restart_q" in n and "[1]" in n:
+            watch[f"aq:{n[-12:]}"] = handle
+        elif n.endswith("a_restart[1]"):
+            watch["a_restart1"] = handle
+        elif "restart" in n and "ctl" in n:              # ctl register restart bits
+            watch[f"ctl:{n[-10:]}"] = handle
+        elif "fifos[0].fifo_restart" in n:
+            watch["restart1(alias)"] = handle            # fifo_restart[1] == restart[1]
+    dut._log.info(f"probe signals: {sorted(watch)}")
+
+    printing = False
+    count = [0]
+
+    async def probe():
+        while True:
+            await RisingEdge(dut.clk_PAD)
+            if printing and count[0] < 45:
+                t = cocotb.utils.get_sim_time("ns")
+                vals = "  ".join(f"{k}={str(v.value)}" for k, v in sorted(watch.items()))
+                dut._log.info(f"  probe @{t:>10.0f}: {vals}")
+                count[0] += 1
+    cocotb.start_soon(probe())
+
+    # --- core1_solo body ---
+    spi = await start_up(dut)
+    await spi.bio_write(0x00, 0)
+    prog = [0xFF0002B7, 0x00028C13, 0x00028D13, 0x00028A93, 0x00000A13, 0xFF9FF06F]
+    await spi.bio_write(0xE0, 1)
+    await spi.bio_imem_burst_write(0, prog)
+    await spi.bio_write(0x54, 100 << 16)
+
+    printing = True                       # open the window just before enable
+    dut._log.info("=== ENABLE WRITE ===")
+    await spi.bio_write(0x00, 0x0A)
+    await Timer(10_000, unit="ns")        # ~100 cycles; printing self-limits to 45
+    printing = False
+    dut._log.info(f"final raw = {str(dut.bidir_PAD.value)}")
+
+@cocotb.test()
+
+async def gl_enable_probe2(dut):
+    """Ring-buffer probe: dumps N cycles around E_core1's X transition."""
+    from cocotb.triggers import RisingEdge
+    from collections import deque
+
+    watch = {}
+    for handle in dut:
+        n = handle._name
+        if n == "_000046_":                      watch["E1"] = handle
+        elif n == "_000047_":                    watch["E0"] = handle
+        elif "en_sync" in n:                     watch["ensync"] = handle
+        elif n.endswith("a_restart[1]"):         watch["arst1"] = handle
+        elif "a_restart_q[0][1]" in n:           watch["aq0"] = handle
+        elif "a_restart_q[1][1]" in n:           watch["aq1"] = handle
+        elif "fifos[1].fifo_restart" in n:       watch["rst1"] = handle
+        elif "mach[1].core.latched_stalu" in n:  watch["stalu1"] = handle
+    dut._log.info(f"probe2 signals: {sorted(watch)}")
+
+    ring = deque(maxlen=25)
+    state = {"armed": False, "fired": False, "post": 0}
+
+    async def probe():
+        while True:
+            await RisingEdge(dut.clk_PAD)
+            t = cocotb.utils.get_sim_time("ns")
+            row = f"@{t:>9.0f}: " + "  ".join(
+                f"{k}={str(v.value)}" for k, v in sorted(watch.items()))
+            ring.append(row)
+            e1 = str(watch["E1"].value).lower()
+            if state["armed"] and not state["fired"] and "x" in e1:
+                state["fired"] = True
+                dut._log.warning("=== E1 X TRANSITION — last 25 cycles: ===")
+                for r in ring:
+                    dut._log.info("  " + r)
+            elif state["fired"] and state["post"] < 15:
+                dut._log.info("  post " + row)
+                state["post"] += 1
+    cocotb.start_soon(probe())
+
+    spi = await start_up(dut)
+    await spi.bio_write(0x00, 0)
+    prog = [0xFF0002B7, 0x00028C13, 0x00028D13, 0x00028A93, 0x00000A13, 0xFF9FF06F]
+    await spi.bio_write(0xE0, 1)
+    await spi.bio_imem_burst_write(0, prog)
+    await spi.bio_write(0x54, 100 << 16)
+
+    state["armed"] = True                 # arm AFTER idle: only the strobe-time X fires
+    dut._log.info("=== ARMED, issuing enable write ===")
+    await spi.bio_write(0x00, 0x0A)
+    await Timer(20_000, unit="ns")
+    dut._log.info(f"fired={state['fired']}  final raw = {str(dut.bidir_PAD.value)}")
+
+@cocotb.test()
+async def gl_stall_term_hunt(dut):
+    """Which stall-cone term goes X first, cycle-aligned with E going X.
+    Run STANDALONE. Reproduces gl_fifo_host_bitbang's enable (core 0)."""
+    from cocotb.triggers import RisingEdge
+    from collections import deque
+
+    PATTERNS = [   # label : substring to find in flat-netlist names (mach 0 focus)
+        ("E0",        "_000046_"),
+        ("qhalt0",    "mach[0].quanta_halt"),        # name may differ — see note
+        ("quantum0",  "quantum[0]"),
+        ("rfrd0",     "mach_regfifo_rd[0]"),
+        ("rfwr0",     "mach_regfifo_wr[0]"),
+        ("rdable",    "regfifo_readable"),
+        ("wrable",    "regfifo_writable"),
+        ("ev0",       "stalling_for_event[0]"),
+        ("ensync",    "en_sync"),
+        ("dec_rs1",   "mach[0].core.decoded_rs1"),
+        ("dec_rs2",   "mach[0].core.decoded_rs2"),
+        ("cpu_st",    "mach[0].core.cpu_state"),
+        ("extq0",     "extclk_selected_q[0]"),
+        ("stalu0",    "mach[0].core.latched_stalu"),
+    ]
+    watch = {}
+    for handle in dut:
+        n = handle._name
+        for label, pat in PATTERNS:
+            if pat in n:
+                watch.setdefault(label, []).append(handle)   # multi-bit: keep all
+    dut._log.info(f"found: { {k: len(v) for k, v in watch.items()} }")
+
+    ring = deque(maxlen=20)
+    state = {"armed": False, "fired": False, "post": 0}
+
+    def row():
+        t = cocotb.utils.get_sim_time("ns")
+        parts = []
+        for k in sorted(watch):
+            vals = "".join(str(h.value) for h in watch[k])
+            parts.append(f"{k}={vals}")
+        return f"@{t:>9.0f}: " + "  ".join(parts)
+
+    async def mon():
+        while True:
+            await RisingEdge(dut.clk_PAD)
+            r = row()
+            ring.append(r)
+            e0 = "".join(str(h.value) for h in watch.get("E0", []))
+            if state["armed"] and not state["fired"] and "x" in e0.lower():
+                state["fired"] = True
+                dut._log.warning("=== E0 X — last 20 cycles: ===")
+                for rr in ring: dut._log.info("  " + rr)
+            elif state["fired"] and state["post"] < 12:
+                dut._log.info("  post " + r); state["post"] += 1
+    cocotb.start_soon(mon())
+
+    # --- bitbang enable sequence (core 0) ---
+    spi = await start_up(dut)
+    await spi.bio_write(0x00, 0)
+    prog = [0xFFF00293, 0x00028C13, 0x00028D13,
+            0x00080313, 0x00030A93, 0x00000A13, 0xFF5FF06F]
+    await spi.bio_write(0xE0, 0)
+    await spi.bio_imem_burst_write(0, prog)
+    await spi.bio_write(0x50, 100 << 16)
+    state["armed"] = True
+    dut._log.info("=== ARMED, enabling core 0 ===")
+    await spi.bio_write(0x00, 0x05)
+    await Timer(30_000, unit="ns")
+    dut._log.info(f"fired={state['fired']}  raw={str(dut.bidir_PAD.value)}")
+
+@cocotb.test()
+async def gl_stall_term_hunt2(dut):
+    """Which stall-cone term goes X first, cycle-aligned with the ICG output.
+    Run STANDALONE on the CTS netlist. Triggers on mach[0].core.clk going X.
+    Reproduces gl_fifo_host_bitbang's enable sequence (core 0).
+
+    NOTE: E-net names (_000048_/_000049_) are synthesis-run-specific. Verify with:
+      grep -A3 "icgtp_1 " <nl.v> | grep "\\.E("
+    """
+    from cocotb.triggers import RisingEdge
+    from collections import deque
+
+    EXACT = {
+        "clk0": "i_chip_core.u_bio_lite.u_bio.mach[0].core.clk",
+        "clk1": "i_chip_core.u_bio_lite.u_bio.mach[1].core.clk",
+    }
+    SUBSTR = [
+        ("ensync",  "en_sync"),
+        ("stalu1",  "mach[1].core.latched_stalu"),      # is core 1 X? (expect yes)
+        ("gdir",    "u_bio.gpio_dir"),                  # the scc_ff Q — may survive
+        ("gout",    "u_bio.gpio_out"),
+        ("gdirsnap","gpio_dir_snap"),                   # if you renamed for invert
+        ("agg",     "gpdir_set_agg"),                   # aggregator outputs
+        ("aggc",    "gpdir_clr_agg"),
+    ]
+
+    watch = {}
+    for handle in dut:
+        n = handle._name
+        for label, exact in EXACT.items():
+            if n == exact:
+                watch.setdefault(label, []).append(handle)
+        for label, pat in SUBSTR:
+            if pat in n and "clkbuf" not in n and "clknet" not in n:
+                watch.setdefault(label, []).append(handle)
+
+    # keep only handles that are readable signals (drop instances etc.)
+    for label in list(watch):
+        good = []
+        for h in watch[label]:
+            try:
+                _ = h.value
+                good.append(h)
+            except Exception:
+                pass
+        if good:
+            watch[label] = good
+        else:
+            del watch[label]
+
+    dut._log.info(f"found: { {k: len(v) for k, v in watch.items()} }")
+    wanted = list(EXACT) + [l for l, _ in SUBSTR]
+    missing = [l for l in wanted if l not in watch]
+    if missing:
+        dut._log.warning(f"NOT FOUND (dissolved into _NNN_ nets): {missing}")
+
+    def vals(label):
+        return "".join(str(h.value) for h in watch.get(label, []))
+
+    def row():
+        t = cocotb.utils.get_sim_time("ns")
+        parts = [f"{k}={vals(k)}" for k in sorted(watch)]
+        return f"@{t:>9.0f}: " + "  ".join(parts)
+
+    ring = deque(maxlen=20)
+    state = {"armed": False, "fired": False, "post": 0}
+
+    TRIG = "clk0" if "clk0" in watch else ("E0" if "E0" in watch else None)
+    assert TRIG, "no trigger signal found — check net names"
+    dut._log.info(f"trigger signal: {TRIG}")
+
+    async def mon():
+        while True:
+            await RisingEdge(dut.clk_PAD)
+            r = row()
+            ring.append(r)
+            if state["armed"] and not state["fired"] and "x" in vals(TRIG).lower():
+                state["fired"] = True
+                dut._log.warning(f"=== {TRIG} X — last 20 cycles: ===")
+                for rr in ring:
+                    dut._log.info("  " + rr)
+            elif state["fired"] and state["post"] < 12:
+                dut._log.info("  post " + r)
+                state["post"] += 1
+    cocotb.start_soon(mon())
+
+    # --- bitbang enable sequence (core 0) ---
+    spi = await start_up(dut)
+    await spi.bio_write(0x00, 0)
+    prog = [0xFFF00293, 0x00028C13, 0x00028D13,
+            0x00080313, 0x00030A93, 0x00000A13, 0xFF5FF06F]
+    await spi.bio_write(0xE0, 0)
+    await spi.bio_imem_burst_write(0, prog)
+    await spi.bio_write(0x50, 100 << 16)
+
+    state["armed"] = True
+    dut._log.info("=== ARMED, enabling core 0 ===")
+    await spi.bio_write(0x00, 0x05)
+    await Timer(30_000, unit="ns")
+    dut._log.info(f"fired={state['fired']}  raw={str(dut.bidir_PAD.value)}")
+
+@cocotb.test()
+async def gl_divider_x_probe(dut):
+    """Is pio_divider the X source? Watch penable + divider internals.
+    Run STANDALONE on the CTS netlist (window removed, en_sync gating in)."""
+    from cocotb.triggers import RisingEdge
+    from collections import deque
+
+    SUBSTR = [
+        ("penable",  "u_bio.penable"),
+        ("pen",      "pio_div"),          # broad: catch divider internals
+        ("divcnt",   "div_counter"),
+        ("oldpen",   "old_pen"),
+        ("divintr",  "div_int_r"),
+        ("divfracr", "div_frac_r"),
+        ("ensync",   "en_sync"),
+        ("clk0",     "mach[0].core.clk"),
+    ]
+    watch = {}
+    for handle in dut:
+        n = handle._name
+        for label, pat in SUBSTR:
+            if pat in n and "clkbuf" not in n and "clknet" not in n:
+                watch.setdefault(label, []).append(handle)
+    for label in list(watch):
+        good = []
+        for h in watch[label]:
+            try:
+                _ = h.value; good.append(h)
+            except Exception:
+                pass
+        if good: watch[label] = good
+        else:    del watch[label]
+
+    dut._log.info(f"found: { {k: len(v) for k, v in watch.items()} }")
+    missing = [l for l, _ in SUBSTR if l not in watch]
+    if missing:
+        dut._log.warning(f"NOT FOUND: {missing}")
+
+    def vals(k): return "".join(str(h.value) for h in watch.get(k, []))
+
+    async def mon():
+        n = 0
+        while n < 40:
+            await RisingEdge(dut.clk_PAD)
+            t = cocotb.utils.get_sim_time("ns")
+            parts = [f"{k}={vals(k)}" for k in sorted(watch)]
+            dut._log.info(f"  @{t:>9.0f}: " + "  ".join(parts))
+            n += 1
+    # sample right after reset release — that's where the X lives
+    spi = await start_up(dut)
+    cocotb.start_soon(mon())
+    await Timer(5_000, unit="ns")
+    dut._log.info(f"pads after reset = {str(dut.bidir_PAD.value)}")
+@cocotb.test()
+async def gl_when_x_appears(dut):
+    """Bracket WHICH operation introduces X on the pads."""
+    def pads(): return str(dut.bidir_PAD.value)
+    spi = await start_up(dut)
+    dut._log.info(f"after reset:        {pads()}")
+    await spi.bio_write(0x00, 0)
+    dut._log.info(f"after ctl=0:        {pads()}")
+    prog = [0xFFF00293, 0x00028C13, 0x00028D13,
+            0x00080313, 0x00030A93, 0x00000A13, 0xFF5FF06F]
+    await spi.bio_write(0xE0, 0)
+    dut._log.info(f"after imem sel:     {pads()}")
+    await spi.bio_imem_burst_write(0, prog)
+    dut._log.info(f"after prog load:    {pads()}")
+    await spi.bio_write(0x50, 100 << 16)
+    dut._log.info(f"after div write:    {pads()}")
+    await spi.bio_write(0x00, 0x05)
+    dut._log.info(f"immediately after enable: {pads()}")
+    for i in range(6):
+        await Timer(5_000, unit="ns")
+        dut._log.info(f"  +{(i+1)*5}us: {pads()}")
+@cocotb.test()
+async def gl_valid_x_probe(dut):
+    """Watch the aggregator strobes at the enable moment."""
+    from cocotb.triggers import RisingEdge
+    from collections import deque
+
+    SUBSTR = [
+        ("gset_v",   "gpio_set_valid"),
+        ("gclr_v",   "gpio_clr_valid"),
+        ("gdset_v",  "gpdir_set_valid"),
+        ("gdclr_v",  "gpdir_clr_valid"),
+        ("wen",      "cpuregs.wen"),          # try; may be _NNN_
+        ("waddr",    "cpuregs.waddr"),
+        ("latst",    "latched_store"),
+        ("latrd",    "latched_rd"),
+        ("ensync",   "en_sync"),
+        ("clk0",     "mach[0].core.clk"),
+    ]
+    watch = {}
+    for handle in dut:
+        n = handle._name
+        for label, pat in SUBSTR:
+            if pat in n and "clkbuf" not in n and "clknet" not in n:
+                watch.setdefault(label, []).append(handle)
+    for label in list(watch):
+        good = []
+        for h in watch[label]:
+            try: _ = h.value; good.append(h)
+            except Exception: pass
+        if good: watch[label] = good
+        else: del watch[label]
+    dut._log.info(f"found: { {k: len(v) for k, v in watch.items()} }")
+    dut._log.warning(f"NOT FOUND: {[l for l,_ in SUBSTR if l not in watch]}")
+
+    def vals(k): return "".join(str(h.value) for h in watch.get(k, []))
+
+    printing = [False]
+    async def mon():
+        n = 0
+        while True:
+            await RisingEdge(dut.clk_PAD)
+            if printing[0] and n < 30:
+                t = cocotb.utils.get_sim_time("ns")
+                dut._log.info(f"  @{t:>9.0f}: " +
+                    "  ".join(f"{k}={vals(k)}" for k in sorted(watch)) +
+                    f"  pads={str(dut.bidir_PAD.value)[9:20]}")
+                n += 1
+    cocotb.start_soon(mon())
+
+    spi = await start_up(dut)
+    await spi.bio_write(0x00, 0)
+    prog = [0xFFF00293, 0x00028C13, 0x00028D13,
+            0x00080313, 0x00030A93, 0x00000A13, 0xFF5FF06F]
+    await spi.bio_write(0xE0, 0)
+    await spi.bio_imem_burst_write(0, prog)
+    await spi.bio_write(0x50, 100 << 16)
+    printing[0] = True
+    dut._log.info("=== ENABLE ===")
+    await spi.bio_write(0x00, 0x05)
+    await Timer(5_000, unit="ns")
+
+@cocotb.test()
+async def gl_twocore_stage_probe(dut):
+    def pads(): return str(dut.bidir_PAD.value)
+    spi = await start_up(dut)
+    await spi.bio_write(0x00, 0)
+    prog0 = [0x000012B7, 0xFFF28293, 0x00028C13, 0x00028D13, 0x00028A93, 0x00000A13, 0xFF9FF06F]
+    prog1 = [0xFF0002B7, 0x00028C13, 0x00028D13, 0x00028A93, 0x00000A13, 0xFF9FF06F]
+    await spi.bio_write(0xE0, 0); await spi.bio_imem_burst_write(0, prog0)
+    await spi.bio_write(0xE0, 1); await spi.bio_imem_burst_write(0, prog1)
+    await spi.bio_write(0x50, 100 << 16)
+    await spi.bio_write(0x54, 100 << 16)
+
+    await spi.bio_write(0x00, 0x05)              # core 0 first
+    await Timer(30_000, unit="ns")
+    dut._log.info(f"core0 only:   {pads()}")
+
+    await spi.bio_write(0x00, 0x0F)              # then add core 1
+    await Timer(30_000, unit="ns")
+    dut._log.info(f"staged both:  {pads()}")
