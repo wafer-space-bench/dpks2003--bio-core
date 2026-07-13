@@ -148,6 +148,22 @@ module bio_lite #(
     // Register bank signals
     logic ctl_action, ctl_action_q;
 
+    // core_live[j]: "core j has completed its post-restart synchronous reset;
+    // its outputs may be trusted". A disabled core is clock-gated, so its sync
+    // reset never runs -> latched_store/latched_rd (hence wen/waddr, hence every
+    // *_valid strobe) are undefined. Those strobes must not reach the shared
+    // scc_ffs, which latch X/garbage permanently.
+    logic [NUM_MACH-1:0] core_live;
+    always_ff @(posedge clk or negedge reset_n) begin
+        if (~reset_n)
+            core_live <= '0;
+        else
+            for (int m = 0; m < NUM_MACH; m++) begin
+                if (restart[m])       core_live[m] <= 1'b0;
+                else if (en_sync[m])  core_live[m] <= 1'b1;
+            end
+    end
+
     // =====================================================================
     // HOST REGISTER DECODER
     // Replaces the entire APB SFR bank from bio_bdma.sv
@@ -423,8 +439,8 @@ module bio_lite #(
         for (genvar k = 0; k < 4; k = k + 1) begin: mach_to_fifo
             priority_demux #(.DATAW(32), .LEVELS(NUM_MACH + 1)) select_wdata (
                 .stb({
-                    mach_regfifo_wr[1][k] & en_sync[1],
-                    mach_regfifo_wr[0][k] & en_sync[0],
+                    mach_regfifo_wr[1][k] & core_live[1],
+                    mach_regfifo_wr[0][k] & core_live[0],
                     push[k]
                 }),
                 .data_in({fdin[k], mach_regfifo_wdata[0], mach_regfifo_wdata[1]}),
@@ -432,8 +448,8 @@ module bio_lite #(
             );
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH + 1)) select_wr (
                 .stb({
-                    mach_regfifo_wr[1][k] & en_sync[1],
-                    mach_regfifo_wr[0][k] & en_sync[0],
+                    mach_regfifo_wr[1][k] & core_live[1],
+                    mach_regfifo_wr[0][k] & core_live[0],
                     push[k]
                 }),
                 .data_in({push[k], mach_regfifo_wr[0][k], mach_regfifo_wr[1][k]}),
@@ -441,8 +457,8 @@ module bio_lite #(
             );
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH + 1)) select_rd (
                 .stb({
-                    mach_regfifo_rd[1][k] & en_sync[1],
-                    mach_regfifo_rd[0][k] & en_sync[0],
+                    mach_regfifo_rd[1][k] & core_live[1],
+                    mach_regfifo_rd[0][k] & core_live[0],
                     pull[k]
                 }),
                 .data_in({pull[k], mach_regfifo_rd[0][k], mach_regfifo_rd[1][k]}),
@@ -482,19 +498,20 @@ module bio_lite #(
     
     
     priority_demux #(.DATAW(24), .LEVELS(NUM_MACH + 1)) event_set_aggregator (
-        .stb({event_set_valid[1] & en_sync[1],
-              event_set_valid[0] & en_sync[0],
+        .stb({event_set_valid[1] & core_live[1],
+              event_set_valid[0] & core_live[0],
               host_event_set_valid}),
         .data_in({host_event_set, event_set[0], event_set[1]}),
         .data_out(event_set_agg)
     );
     priority_demux #(.DATAW(24), .LEVELS(NUM_MACH + 1)) event_clr_aggregator (
-        .stb({event_clr_valid[1] & en_sync[1],
-              event_clr_valid[0] & en_sync[0],
+        .stb({event_clr_valid[1] & core_live[1],
+              event_clr_valid[0] & core_live[0],
               host_event_clr_valid}),
         .data_in({host_event_clr, event_clr[0], event_clr[1]}),
         .data_out(event_clr_agg)
     );
+
     scc_ff #(.RESET(0), .WIDTH(24)) event_aggregator (
         .clk(clk), .reset_n(reset_n),
         .set(event_set_agg), .clr(event_clr_agg),
@@ -510,12 +527,17 @@ module bio_lite #(
     // Async reset: unreset synchronizers are X at GL until the pads settle,
     // and undriven bidir pads (Z) make the input-buffer output X indefinitely.
     // That X reached quantum -> stall -> ICG enable -> X core clock.
+
+    // GPIO inversion, input side (bio_bdma line 870):
+    // invert at the pin boundary, before the synchronizers.
+    wire [31:0] gpio_in_inv = gpio_in ^ in_invert;
+
     always_ff @(posedge clk or negedge reset_n) begin
         if (~reset_n) begin
             gpio_in_sync0 <= 32'h0;
             gpio_in_sync1 <= 32'h0;
         end else begin
-            gpio_in_sync0 <= gpio_in;
+            gpio_in_sync0 <= gpio_in_inv;
             gpio_in_sync1 <= gpio_in_sync0;
         end
     end
@@ -534,26 +556,26 @@ module bio_lite #(
     generate
         for (genvar g = 0; g < 32; g = g + 1) begin: gen_gpio
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpio_set_aggregator (
-                .stb({gpio_set[1][g] & gpio_set_valid[1] & en_sync[1],
-                      gpio_set[0][g] & gpio_set_valid[0] & en_sync[0]}),
+                .stb({gpio_set[1][g] & gpio_set_valid[1] & core_live[1],
+                      gpio_set[0][g] & gpio_set_valid[0] & core_live[0]}),
                 .data_in({gpio_set[0][g], gpio_set[1][g]}),
                 .data_out(gpio_set_agg[g])
             );
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpio_clr_aggregator (
-                .stb({gpio_clr[1][g] & gpio_clr_valid[1] & en_sync[1],
-                      gpio_clr[0][g] & gpio_clr_valid[0] & en_sync[0]}),
+                .stb({gpio_clr[1][g] & gpio_clr_valid[1] & core_live[1],
+                      gpio_clr[0][g] & gpio_clr_valid[0] & core_live[0]}),
                 .data_in({gpio_clr[0][g], gpio_clr[1][g]}),
                 .data_out(gpio_clr_agg[g])
             );
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpdir_set_aggregator (
-                .stb({gpdir_set[1][g] & gpdir_set_valid[1] & en_sync[1],
-                      gpdir_set[0][g] & gpdir_set_valid[0] & en_sync[0]}),
+                .stb({gpdir_set[1][g] & gpdir_set_valid[1] & core_live[1],
+                      gpdir_set[0][g] & gpdir_set_valid[0] & core_live[0]}),
                 .data_in({gpdir_set[0][g], gpdir_set[1][g]}),
                 .data_out(gpdir_set_agg[g])
             );
             priority_demux #(.DATAW(1), .LEVELS(NUM_MACH)) gpdir_clr_aggregator (
-                .stb({gpdir_clr[1][g] & gpdir_clr_valid[1] & en_sync[1],
-                      gpdir_clr[0][g] & gpdir_clr_valid[0] & en_sync[0]}),
+                .stb({gpdir_clr[1][g] & gpdir_clr_valid[1] & core_live[1],
+                      gpdir_clr[0][g] & gpdir_clr_valid[0] & core_live[0]}),
                 .data_in({gpdir_clr[0][g], gpdir_clr[1][g]}),
                 .data_out(gpdir_clr_agg[g])
             );
@@ -573,21 +595,30 @@ module bio_lite #(
 
     // Snap-to-quantum output (2 cores, from bio_bdma.sv lines 965–1008)
 
+    logic [31:0] gpio_out_snap, gpio_dir_snap;
+
+
     always_ff @(posedge clk or negedge reset_n) begin
         if (~reset_n) begin
-            gpio_out <= 32'h0;
-            gpio_dir <= 32'h0;      // all inputs (hi-Z pads) out of reset
+            gpio_out_snap <= 32'h0;
+            gpio_dir_snap <= 32'h0;
         end else if (snap_output_to_quantum) begin
             case (snap_output_to_which)
-                1'b0: if (penable[0]) begin gpio_out <= gpio_out_int; gpio_dir <= gpio_dir_int; end
-                1'b1: if (penable[1]) begin gpio_out <= gpio_out_int; gpio_dir <= gpio_dir_int; end
+                1'b0: if (penable[0]) begin gpio_out_snap <= gpio_out_int; gpio_dir_snap <= gpio_dir_int; end
+                1'b1: if (penable[1]) begin gpio_out_snap <= gpio_out_int; gpio_dir_snap <= gpio_dir_int; end
             endcase
         end else begin
-            gpio_out <= gpio_out_int;
-            gpio_dir <= gpio_dir_int;
+            gpio_out_snap <= gpio_out_int;
+            gpio_dir_snap <= gpio_dir_int;
         end
     end
 
+    // GPIO inversion, output side (bio_bdma lines 868-869):
+    // combinational XOR after the snap registers.
+    assign gpio_out = gpio_out_snap ^ out_invert;
+    assign gpio_dir = gpio_dir_snap ^ oe_invert;
+
+    
     // Snap-to-quantum input (2 cores, from bio_bdma.sv lines 1010–1048)
     always_ff @(posedge clk) begin
         case (snap_input_to_which)
@@ -620,8 +651,6 @@ module bio_lite #(
     endgenerate
 
 
-    logic [NUM_MACH-1:0]       a_restart;
-    logic [NUM_MACH-1:0]       a_restart_q[2];
 
 // Bootstrap ungate window: hold ICG enable for BOOT_CYCLES after restart so the
 // core completes sync-reset AND its first fetch/decode before the stall cone

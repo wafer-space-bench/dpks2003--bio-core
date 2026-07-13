@@ -48,7 +48,10 @@ module chip_core #(
     wire spi_cs_n = input_in[2];
 
     // No pull-up/down on input pads
-    assign input_pu = {NUM_INPUT_PADS{1'b0}};
+    // cs_n (bit 2) pulled up: a floating cs_n could read as asserted and let the
+    // SPI slave clock in garbage while the host is off or in reset.
+    // Spare pad (bit 3) pulled up as a test point. sclk/mosi are host-driven.
+    assign input_pu = {{(NUM_INPUT_PADS-3){1'b1}}, 3'b100};
     assign input_pd = {NUM_INPUT_PADS{1'b0}};
 
     // =========================================================
@@ -88,9 +91,15 @@ module chip_core #(
     // Pad configuration (all bidir pads)
     assign bidir_cs = {NUM_BIDIR_PADS{1'b0}};  // CMOS buffer mode
     assign bidir_sl = {NUM_BIDIR_PADS{1'b0}};  // Fast slew
-    assign bidir_ie = ~bidir_oe;                 // Input enable when not outputting
+
+
+    assign bidir_ie[34:0]                = ~bidir_oe[34:0];
+    assign bidir_ie[NUM_BIDIR_PADS-1:35] = {(NUM_BIDIR_PADS-35){1'b0}};
     assign bidir_pu = {NUM_BIDIR_PADS{1'b0}};  // No pull-up
-    assign bidir_pd = {NUM_BIDIR_PADS{1'b0}};  // No pull-down
+    //assign bidir_pd = {NUM_BIDIR_PADS{1'b0}};  // No pull-down
+
+    assign bidir_pd[34:0]                = 35'h0;
+    assign bidir_pd[NUM_BIDIR_PADS-1:35] = {(NUM_BIDIR_PADS-35){1'b1}};  // pull unused pads low
 
     // =========================================================
     // BIO-lite instantiation
