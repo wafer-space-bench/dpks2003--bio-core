@@ -1,136 +1,160 @@
-# gf180mcu Project Template
+# BIO-Core — GF180MCU
+# bio180
 
-Project template for wafer.space MPW runs using the gf180mcu PDK.
 
-## Dependencies
+A dual-core programmable I/O coprocessor ported from [bunnie Huang's BIO](https://github.com/betrusted-io/betrusted-soc) (Betrusted I/O) to the GlobalFoundries GF180MCU 180nm process, targeting [wafer.space](https://wafer.space) Run 2.
 
-Too manage all dependencies, the project template includes a Nix shell with all the required tools.
-Install Nix and LibreLane by following the Nix-based installation instructions: https://librelane.readthedocs.io/en/latest/installation/nix_installation/index.html
-To activate the shell, simply run `nix-shell` in the root directory of this repository. The subsequent steps assume that you are in the Nix shell of the project template.
+Each core is a PicoRV32 RISC-V (RV32I) processor with 2 KiB SRAM (8× GF180MCU foundry SRAM macros), clock-gated for FIFO blocking and event wait. The host interface is SPI with burst IMEM loading and full 9-bit addressing.
 
-## Prerequisites
 
-The project template uses the open_pdks gf180mcuD variant of the PDK.
-To clone the latest PDK version via [Ciel](https://github.com/fossi-foundation/ciel), run `make clone-pdk`.
+## CHIP
 
-## Implement the Design
+<div align="center">
+  <img src="./assests/chip_top.png" alt="Chip Top" width="400">
+</div>
 
-With the Nix shell enabled, run the implementation:
+## Chip Art 
 
-```
-make librelane
-```
+A ghost with flower and balloon in his hands with bio180 written in under it.
 
-You can find all output artifacts in the `librelane/runs/<timestamp>/` directory.
+<div align="center">
+  <img src="./assests/chip_art.png" alt="Chip Art" width="400">
+</div>
 
-## View the Design
-
-After completion, you can view the design using the OpenROAD GUI:
+## Architecture
 
 ```
-make librelane-openroad
+                   RP2040 (Host)
+                       │ SPI
+                       ▼
+                 ┌─────────────┐
+                 │ SPI Bridge  │
+                 └──────┬──────┘
+          ┌─────────────┼─────────────┐
+          ▼             ▼             ▼
+    ┌──────────┐  ┌──────────┐  ┌──────────┐
+    │  Core 0  │  │  4×FIFO  │  │  Core 1  │
+    │ PicoRV32 │  │  (shared)│  │ PicoRV32 │
+    │ 2KB SRAM │  │          │  │ 2KB SRAM │
+    └────┬─────┘  └──────────┘  └─────┬────┘
+         │     32-bit GPIO (bidir)    │
+         └────────────┬───────────────┘
+                      ▼
+              Physical Pins (32)
 ```
 
-Or using KLayout:
+## Key Features
+
+- **Dual PicoRV32 cores** — RV32I, independently programmable, clock-gated
+- **2 KiB IMEM per core** — 8× `gf180mcu_fd_ip_sram__sram512x8m8wm1` macros
+- **32 bidirectional GPIO** — split across EAST (0–18) and WEST (19–31) pads
+- **4 shared FIFOs** — inter-core and host↔core communication
+- **SPI slave interface** — register access, burst IMEM write with auto-increment
+
+## Slot & Process
+
+| Parameter | Value |
+|-----------|-------|
+| Process | GlobalFoundries GF180MCU (180nm, 5V) |
+| Slot | 0.5×1 (1936 × 5122 µm) |
+| Standard cells | `gf180mcu_fd_sc_mcu7t5v0` |
+| SRAM | `gf180mcu_fd_ip_sram__sram512x8m8wm1` × 8 |
+| IO pads | `gf180mcu_fd_io` (5V tolerant) |
+| Target clock | 10 MHz |
+| Shuttle | wafer.space Run 2 |
+
+## Pin Map
 
 ```
-make librelane-klayout
+              ┌────── NORTH ──────┐
+              │  analog (unused)  │
+   ┌──────────┤                   ├──────────┐
+   │ GPIO[31] │                   │ SPI MISO │
+   │ GPIO[30] │                   │ IRQ[0]   │
+   │    ...   │                   │ IRQ[1]   │
+W  │ GPIO[19] │    BIO-Coprocessor│ GPIO[0]  │ E
+E  │          │                   │   ...    │ A
+S  │ (unused) │                   │ GPIO[18] │ S
+T  │          │                   │          │ T
+   │          │                   │ (unused) │
+   └──────────┤                   ├──────────┘
+              │ CLK RST SCLK     │
+              │ MOSI CS_N spare  │
+              └────── SOUTH ──────┘
 ```
 
-## Verification and Simulation
 
-For the verification of the chip we use [cocotb](https://www.cocotb.org/). Cocotb is a Python-based testbench environment. The simulator that is used by the project template is [Icarus Verilog](https://github.com/steveicarus/iverilog).
+## Complete PINOUT 
 
-The testbench is located in `cocotb/chip_top_tb.py`. To run the RTL simulation, run the following command:
+ [PINOUT](pinout.md)
 
-```
-make sim
-```
+## SPI Protocol
 
-To run the GL (gate-level) simulation, run the following command:
+| Command | Code | Description |
+|---------|------|-------------|
+| REG_WRITE | 0x02 | Write host register (8-bit addr) |
+| REG_READ | 0x03 | Read host register (8-bit addr) |
+| IMEM_WRITE_LO | 0x04 | Write IMEM addr 0–255, burst with auto-increment |
+| IMEM_READ_LO | 0x05 | Read IMEM addr 0–255 |
+| IMEM_WRITE_HI | 0x06 | Write IMEM addr 256–511, burst with auto-increment |
+| IMEM_READ_HI | 0x07 | Read IMEM addr 256–511 |
 
-```
-make sim-gl
-```
+Frame format: `[CMD 8b] [ADDR 8b] [DATA 32b MSB-first]` — 6 bytes per transaction.
+IMEM write burst: keep CS low, stream 32-bit words. Address auto-increments across the 256 boundary.
 
-> [!NOTE]
-> You need to have the latest implementation of your design in the `final/` folder. After a run has completed without errors, the final views will be copied to `final/`.
+## Register Map
 
-In both cases, a waveform file will be generated under `cocotb/sim_build/chip_top.fst`.
-You can view it using a waveform viewer, for example, [GTKWave](https://gtkwave.github.io/gtkwave/).
+| Address | Name | Description |
+|---------|------|-------------|
+| 0x00 | CTRL | Core enable + restart bits |
+| 0x0C | FIFO_LEVEL | 4×4-bit FIFO fill levels |
+| 0x10–0x1C | TXF0–TXF3 | FIFO write (host → core) |
+| 0x20–0x2C | RXF0–RXF3 | FIFO read (core → host) |
+| 0x48 | FIFO_CLR | FIFO clear bits |
+| 0x50 | QDIV0 | Core 0 quantum divider |
+| 0x54 | QDIV1 | Core 1 quantum divider |
+| 0x64 | OE_INV | Direction inversion mask |
+| 0x68 | OUT_INV | Output inversion mask |
+| 0x6C | IN_INV | Input inversion mask |
+| 0x70 | IRQMASK0 | Core 0 IRQ mask |
+| 0x74 | IRQMASK1 | Core 1 IRQ mask |
+| 0x84 | GPIO_O | GPIO output readback |
+| 0x88 | GPIO_D | GPIO direction readback |
+| 0xFC | CHIP_ID | Returns `0x0B100002` |
 
-```
-make sim-view
-```
+## Build
 
-You can now update the testbench according to your design.
+This was generated on wafer space [template](https://github.com/wafer-space/gf180mcu-project-template) Version 1.5.7
 
-## Implementing Your Own Design
+```bash
+# Enter environment
+cd gf180mcu && nix-shell
 
-The source files for this template can be found in the `src/` directory. `chip_top.sv` defines the top-level ports and instantiates `chip_core`, chip ID (QR code) and the wafer.space logo. To allow for the default bonding setup, do not change the number of pads in order to keep the original bondpad positions. To be compatible with the default breakout PCB, do not change any of the power or ground pads. However, you can change the type of the signal pads, e.g. to bidirectional, input-only or e.g. analog pads. The template provides the `NUM_INPUT` and `NUM_BIDIR` parameters for this purpose.
+# Run cocotb tests
+cd sim/cocotb && MODULE=test_chip_id make
 
-The actual pad positions are defined in the LibreLane configuration file under `librelane/config.yaml`. The variables `PAD_SOUTH`/`PAD_EAST`/`PAD_NORTH`/`PAD_WEST` determine the respective pad placement. The LibreLane configuration also allows you to customize the flow (enable or disable steps), specify the source files, set various variables for the steps, and instantiate macros. For more information about the configuration, please refer to the LibreLane documentation: https://librelane.readthedocs.io/en/latest/
+# Run ASIC flow
+SLOT=0p5x1 make librelane-nodrc
 
-To implement your own design, simply edit `chip_core.sv`. The `chip_core` module receives the clock and reset, as well as the signals from the pads defined in `chip_top`. As an example, a 42-bit wide counter is implemented.
-
-> [!NOTE]
-> For more comprehensive SystemVerilog support, enable the `USE_SLANG` variable in the LibreLane configuration.
-
-## Choosing a Different Slot Size
-
-The template supports the following slot sizes: `1x1`, `0p5x1`, `1x0p5`, `0p5x0p5`.
-By default, the design is implemented using the `1x1` slot definition.
-
-To select a different slot size, simply set the `SLOT` environment variable.
-This can be done when invoking a make target:
-
-```
-SLOT=0p5x0p5 make librelane
-```
-
-Alternatively, you can export the slot size:
-
-```
-export SLOT=0p5x0p5
-```
-
-You can change the slot that is selected by default in the Makefile by editing the value of `DEFAULT_SLOT`.
-
-## Select Different IP Libraries
-
-The project template has support for selecting libraries with the below environment variables:
-
-| Env  | Available Values                                                          | Description                |
-|------|---------------------------------------------------------------------------|----------------------------|
-| SCL  | gf180mcu_fd_sc_mcu7t5v0, gf180mcu_fd_sc_mcu9t5v0, gf180mcu_as_sc_mcu7t3v3 | The standard cell library. |
-| PAD  | gf180mcu_fd_io, gf180mcu_ocd_io                                           | The I/O pad library.       |
-| SRAM | gf180mcu_fd_ip_sram, gf180mcu_ocd_ip_sram                                 | The SRAM library.          |
-
-For example, to build the 0p5x0p5 chip with 3v3 libraries:
-
-```
-SLOT=0p5x0p5 SCL=gf180mcu_as_sc_mcu7t3v3 PAD=gf180mcu_ocd_io SRAM=gf180mcu_ocd_ip_sram make librelane
+# Run manufacturing precheck
+make precheck
 ```
 
-The default values can be changed in the Makefile.
+## Verification
 
-> [!NOTE]
-> Not all of the community-created IPs have been tested yet, so support for them is experimental!
+13 cocotb tests passing across chip ID, FIFO echo, GPIO output, SPI bitbang, events, multi-core quantum sync, and 32-bit GPIO expansion. Gate-level simulation confirms ICG clock gating and dual-core concurrent GPIO operation.
 
-## Building a Standalone Padring for Analog Design
+## Gratitude 
 
-To build just the padring without any standard cell rows, digital routing or filler cells, run the following command:
+Thank you [Bunnie Andrew Huang](https://en.wikipedia.org/wiki/Andrew_Huang_(hacker)) for giving me this opportunity to make this And specially for sponsoring the WS2 shuttle for it 
 
-```
-make librelane-padring
-```
+## Credits
 
-It is also possible to build the padring for other slot sizes:
+- **BIO architecture** — [bunnie Huang](https://github.com/bunnie) (Betrusted/Precursor SoC)
+- **BAO CHIP X1** BaoChip1x(https://github.com/baochip/baochip-1x)
+- **ASIC port** — Deepak ([@dpks2003](https://github.com/dpks2003))
 
-```
-SLOT=0p5x0p5 make librelane-padring
-```
 
-## Precheck
+## License
 
-To check whether your design is suitable for manufacturing, run the [gf180mcu-precheck](https://github.com/wafer-space/gf180mcu-precheck) with your layout.
+Apache-2.0
