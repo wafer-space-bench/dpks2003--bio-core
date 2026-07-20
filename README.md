@@ -157,4 +157,5 @@ Thank you [Bunnie Andrew Huang](https://en.wikipedia.org/wiki/Andrew_Huang_(hack
 
 ## License
 
-Apache-2.0
+The project is under [LICENSE](./LICENSE) same as the original Baochip-x1 . All the BIO core rights are with [Andrew "bunnie"](https://github.com/bunnie) and [Baochip](https://github.com/baochip/). 
+This work is a add on to there work and thus has same LICENSING. 
