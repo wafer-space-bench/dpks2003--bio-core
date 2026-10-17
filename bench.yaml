@@ -1,0 +1,30 @@
+source:
+  url: https://github.com/dpks2003/bio-core
+  original_url: null
+  kind: fork
+  why: GitHub fork of the upstream repository
+  licence: CERN-OHL-W-2.0
+  upstream_default_branch: bio180
+tapeouts:
+- org: wafer.space
+  run: ws-run2
+  slot: DPK1
+  project: bio180
+  size: 0p5x1
+  kind: digital
+  commit: 0fe3252bd4af
+  commit_source: design_ref head recorded by the ws-run1/2 audit
+  tag: wafer.space/ws-run2/DPK1
+  branch: tapeout/wafer.space/ws-run2/DPK1
+  page: https://wafer.space/ws-run2/
+generated: '2026-10-17T23:30:06Z'
+tooling: https://github.com/wafer-space/wafer.space-bench
+index: https://wafer-space-bench.github.io
+branches:
+- about
+- tapeout/wafer.space/ws-run2/DPK1
+- upstream/bio180
+- upstream/dev
+- upstream/main
+- upstream/try_this
+- upstream/two_core
