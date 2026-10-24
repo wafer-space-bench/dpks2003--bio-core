@@ -12,12 +12,12 @@ tapeouts:
   project: bio180
   size: 0p5x1
   kind: digital
-  commit: 0fe3252bd4af
+  commit: 9c01c0f3fd83
   commit_source: design_ref head recorded by the ws-run1/2 audit
   tag: wafer.space/ws-run2/DPK1
   branch: tapeout/wafer.space/ws-run2/DPK1
   page: https://wafer.space/ws-run2/
-generated: '2026-10-17T23:30:06Z'
+generated: '2026-10-24T08:14:13Z'
 tooling: https://github.com/wafer-space/wafer.space-bench
 index: https://wafer-space-bench.github.io
 branches:

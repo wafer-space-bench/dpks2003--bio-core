@@ -12,7 +12,7 @@ Part of the [wafer.space GF180 benchmark](https://wafer-space-bench.github.io): 
 
 | Org | Run | Slot | Project | Size | Commit | Tag / branch |
 |---|---|---|---|---|---|---|
-| wafer.space | [ws-run2](https://wafer.space/ws-run2/) | DPK1 | bio180 | 0p5x1 | `0fe3252bd4af` | [`wafer.space/ws-run2/DPK1`](https://github.com/wafer-space-bench/dpks2003--bio-core/tree/tapeout/wafer.space/ws-run2/DPK1) |
+| wafer.space | [ws-run2](https://wafer.space/ws-run2/) | DPK1 | bio180 | 0p5x1 | `9c01c0f3fd83` | [`wafer.space/ws-run2/DPK1`](https://github.com/wafer-space-bench/dpks2003--bio-core/tree/tapeout/wafer.space/ws-run2/DPK1) |
 
 ## Branches
 
